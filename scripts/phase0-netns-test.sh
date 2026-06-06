@@ -2,13 +2,17 @@
 # Phase 0 acceptance + resilience test.
 #
 # Two network namespaces joined by a veth pair run the SiegaNet server and
-# client. We verify the data-plane on a clean link and again under tc-netem
-# (mobile-like delay + loss), and check that oversized DF packets do not vanish
-# silently (PMTU). After each pass we print the data-plane drop counters so a
-# high inner-TCP retransmit count can be attributed to path loss vs. our own
-# datagram drops.
+# client. We verify the data-plane on a clean link and again under a mobile-like
+# impairment (delay 60ms + loss 2%), and check that oversized DF packets do not
+# vanish silently (PMTU). After each pass we print the data-plane drop counters
+# so a high inner-TCP retransmit count can be attributed to path loss vs. our
+# own datagram drops.
 #
-# Requires root, iproute2 (ip, tc), iperf3, iputils-ping, iptables.
+# The impaired pass uses tc-netem when sch_netem is available, otherwise it
+# falls back to the userspace siega-impair UDP relay (works in any kernel).
+#
+# Requires root, iproute2 (ip), iperf3, iputils-ping, iptables (and tc/sch_netem
+# for the netem path; the relay fallback needs none of those).
 set -euo pipefail
 
 NS_SRV=siega-srv
@@ -16,15 +20,18 @@ NS_CLI=siega-cli
 BIN_DIR="$(mktemp -d)"
 SRV_OUT="$(mktemp)"
 CLI_OUT="$(mktemp)"
-SRV_PID="" CLI_PID=""
+RELAY_OUT="$(mktemp)"
+SRV_PID="" CLI_PID="" RELAY_PID=""
+DIAL_ADDR="10.0.0.1:4443"   # what the client dials; overridden when relaying
 
 cleanup() {
   set +e
   [ -n "$CLI_PID" ] && kill -TERM "$CLI_PID" 2>/dev/null
   [ -n "$SRV_PID" ] && kill -TERM "$SRV_PID" 2>/dev/null
+  [ -n "$RELAY_PID" ] && kill -TERM "$RELAY_PID" 2>/dev/null
   ip netns del "$NS_CLI" 2>/dev/null
   ip netns del "$NS_SRV" 2>/dev/null
-  rm -rf "$BIN_DIR" "$SRV_OUT" "$CLI_OUT"
+  rm -rf "$BIN_DIR" "$SRV_OUT" "$CLI_OUT" "$RELAY_OUT"
 }
 trap cleanup EXIT
 
@@ -45,7 +52,7 @@ start_tunnel() {
   SRV_PID=$!
   sleep 1.5
   ip netns exec "$NS_CLI" "$BIN_DIR/client" \
-    -server 10.0.0.1:4443 -tun siega0 -tun-ip 10.7.0.2/24 >"$CLI_OUT" 2>&1 &
+    -server "$DIAL_ADDR" -tun siega0 -tun-ip 10.7.0.2/24 >"$CLI_OUT" 2>&1 &
   CLI_PID=$!
   sleep 2
 }
@@ -65,7 +72,7 @@ run_pass() { # <label>
   start_tunnel
 
   echo ">> ping 10.7.0.1 through the tunnel"
-  ip netns exec "$NS_CLI" ping -c 5 -W 2 10.7.0.1 || echo "(some loss expected under netem)"
+  ip netns exec "$NS_CLI" ping -c 5 -W 2 10.7.0.1 || echo "(some loss/latency expected under impairment)"
 
   echo
   echo ">> PMTU: ping -M do -s 1400 (1428B, DF) must NOT vanish silently"
@@ -111,6 +118,7 @@ sysctl -w net.core.rmem_max=16777216 net.core.wmem_max=16777216 >/dev/null
 echo ">> building binaries (-tags phase0_insecure)"
 go build -tags phase0_insecure -o "$BIN_DIR/server" ./cmd/sieganet-server
 go build -tags phase0_insecure -o "$BIN_DIR/client" ./cmd/sieganet-client
+go build -o "$BIN_DIR/impair" ./cmd/siega-impair
 
 echo ">> creating namespaces and veth"
 ip netns add "$NS_SRV"
@@ -126,16 +134,28 @@ ip -n "$NS_CLI" link set lo up
 # ---- PASS 1: clean link ----
 run_pass "clean link"
 
-# ---- PASS 2: mobile-like impairment via tc netem on both veth egress ----
+# ---- PASS 2: mobile-like impairment (delay 60ms + loss 2%) ----
+# Prefer tc-netem; if the kernel lacks sch_netem, fall back to the userspace
+# siega-impair UDP relay, which injects the same delay/loss on the QUIC path.
 echo
 if ip netns exec "$NS_CLI" tc qdisc add dev veth-cli root netem delay 60ms loss 2% 2>/dev/null; then
-  echo ">> applied tc netem (delay 60ms loss 2%) — also applying to server side"
+  echo ">> impairment via tc-netem (delay 60ms loss 2%, each direction)"
   ip netns exec "$NS_SRV" tc qdisc add dev veth-srv root netem delay 60ms loss 2%
-  run_pass "netem delay 60ms loss 2% (each direction)"
+  run_pass "tc-netem delay 60ms loss 2%"
+  ip netns exec "$NS_CLI" tc qdisc del dev veth-cli root 2>/dev/null
+  ip netns exec "$NS_SRV" tc qdisc del dev veth-srv root 2>/dev/null
 else
-  echo "!! SKIPPING netem pass: sch_netem qdisc unavailable in this kernel"
-  echo "   (load it with 'modprobe sch_netem'; this minimal sandbox kernel lacks it)."
-  echo "   The clean-link pass above already exercised the full data-plane."
+  echo ">> sch_netem unavailable in this kernel — using userspace siega-impair relay instead"
+  ip netns exec "$NS_SRV" "$BIN_DIR/impair" \
+    -listen 10.0.0.1:4444 -target 10.0.0.1:4443 -delay 60ms -loss 0.02 >"$RELAY_OUT" 2>&1 &
+  RELAY_PID=$!
+  sleep 0.5
+  DIAL_ADDR="10.0.0.1:4444"   # client dials the relay
+  run_pass "siega-impair delay 60ms loss 2% (each direction)"
+  DIAL_ADDR="10.0.0.1:4443"
+  kill -TERM "$RELAY_PID" 2>/dev/null; RELAY_PID=""
+  echo ">> relay impairment summary:"
+  grep -E "relaying|relayed=" "$RELAY_OUT" | tail -3 | sed 's/^/   /'
 fi
 
 echo

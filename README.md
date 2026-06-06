@@ -67,7 +67,8 @@ iputils-ping, iptables.
 
 Automated acceptance + resilience test (two network namespaces over a veth
 pair: ping, PMTU probe, iperf3, MSS-clamp check, drop-counter attribution, and
-a `tc netem` pass for mobile-like delay/loss):
+a mobile-like delay/loss pass — `tc netem` when available, otherwise the
+userspace `siega-impair` UDP relay, which needs no kernel module):
 
 ```sh
 sudo bash scripts/phase0-netns-test.sh
@@ -117,6 +118,11 @@ ping 10.7.0.1
   Default 1 (ordering-safe). On fast, well-connected links raise it to cut
   queue-overflow drops (measured: 1→4 workers reduced self-inflicted drops
   ~2.5× at line rate) at the cost of possible reordering.
+- **`siega-impair`** (`cmd/siega-impair`, test-only) is a userspace UDP relay
+  that injects a fixed delay and random loss on the QUIC path, used by the test
+  when the kernel has no `sch_netem`. Under delay 60ms + loss 2% the tunnel
+  stays up (RTT ~122ms), inner TCP throughput collapses as expected for a lossy
+  high-latency link, and PMTU/MSS keep working.
 
 Unit tests (framing roundtrip, MTU-gate invariant, ICMP builder + checksums):
 
