@@ -120,9 +120,17 @@ ping 10.7.0.1
   ~2.5× at line rate) at the cost of possible reordering.
 - **`siega-impair`** (`cmd/siega-impair`, test-only) is a userspace UDP relay
   that injects a fixed delay and random loss on the QUIC path, used by the test
-  when the kernel has no `sch_netem`. Under delay 60ms + loss 2% the tunnel
-  stays up (RTT ~122ms), inner TCP throughput collapses as expected for a lossy
-  high-latency link, and PMTU/MSS keep working.
+  when the kernel has no `sch_netem`. Each direction has a single ordered
+  delivery queue so packets keep their arrival order (a naive per-packet timer
+  reorders under load and TCP misreads that as loss). Under delay 60ms + loss
+  2% the tunnel stays up (RTT ~122ms), inner TCP throughput collapses as
+  expected for a lossy high-latency link, and PMTU/MSS keep working.
+- **Multi-flow + loss sweep.** The test runs both a single stream and
+  `iperf3 -P 8` (clean and impaired), and a loss sweep at 0.5/1/2/5% loss with
+  a fixed 120ms RTT. A single flow follows the Mathis model
+  (rate ∝ 1/√loss): the printed `rate×√loss` column stays roughly constant and
+  the curve declines smoothly with no cliff, confirming the throughput drop
+  under loss is TCP physics, not a tunnel defect.
 
 Unit tests (framing roundtrip, MTU-gate invariant, ICMP builder + checksums):
 

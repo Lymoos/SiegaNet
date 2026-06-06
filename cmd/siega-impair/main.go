@@ -7,6 +7,11 @@
 // The client dials the relay's address instead of the server's.
 //
 //	siega-impair -listen 10.0.0.1:4444 -target 127.0.0.1:4443 -delay 60ms -loss 0.02
+//
+// Each direction has a single delivery goroutine draining an ordered queue, so
+// packets are delivered in arrival order with a constant delay and writes never
+// race — otherwise a per-packet timer would reorder packets under load and the
+// inner TCP would misread that as loss.
 package main
 
 import (
@@ -17,6 +22,41 @@ import (
 	"sync/atomic"
 	"time"
 )
+
+const queueDepth = 8192
+
+type item struct {
+	data []byte
+	due  time.Time
+}
+
+// newImpairDir returns a function that applies loss then enqueues a packet for
+// in-order delivery after delay. A single consumer goroutine serializes writes.
+func newImpairDir(delay time.Duration, loss float64, write func([]byte), dropped, passed *atomic.Uint64) func([]byte) {
+	ch := make(chan item, queueDepth)
+	go func() {
+		for it := range ch {
+			if d := time.Until(it.due); d > 0 {
+				time.Sleep(d)
+			}
+			write(it.data)
+		}
+	}()
+	return func(b []byte) {
+		if rand.Float64() < loss {
+			dropped.Add(1)
+			return
+		}
+		cp := make([]byte, len(b))
+		copy(cp, b)
+		select {
+		case ch <- item{cp, time.Now().Add(delay)}:
+			passed.Add(1)
+		default:
+			dropped.Add(1) // queue overload; count as a drop
+		}
+	}
+}
 
 func main() {
 	listen := flag.String("listen", ":4444", "UDP address to listen on (client dials this)")
@@ -50,28 +90,12 @@ func main() {
 	var clientAddr atomic.Pointer[net.UDPAddr]
 	var dropped, passed atomic.Uint64
 
-	send := func(deliver func(b []byte)) func(b []byte) {
-		return func(b []byte) {
-			if rand.Float64() < *loss {
-				dropped.Add(1)
-				return
-			}
-			passed.Add(1)
-			cp := make([]byte, len(b))
-			copy(cp, b)
-			// Constant delay preserves ordering, so a per-packet timer is fine.
-			time.AfterFunc(*delay, func() { deliver(cp) })
-		}
-	}
-
-	// client -> server
-	toServer := send(func(b []byte) { _, _ = up.Write(b) })
-	// server -> client
-	toClient := send(func(b []byte) {
+	toServer := newImpairDir(*delay, *loss, func(b []byte) { _, _ = up.Write(b) }, &dropped, &passed)
+	toClient := newImpairDir(*delay, *loss, func(b []byte) {
 		if ca := clientAddr.Load(); ca != nil {
 			_, _ = front.WriteToUDP(b, ca)
 		}
-	})
+	}, &dropped, &passed)
 
 	// server -> client reader
 	go func() {

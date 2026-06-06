@@ -45,6 +45,57 @@ srv_udp() {
   ip netns exec "$NS_SRV" awk -v i="$1" '/^Udp: [0-9]/{print $(i+1)}' /proc/net/snmp
 }
 
+NETEM_OK=0   # set after the veth exists; selects netem vs the relay
+
+# impair_start <loss_fraction>  applies delay 60ms (=>120ms RTT) + loss to the
+# QUIC path, via tc-netem if available else the userspace relay. The client must
+# (re)start afterwards because the relay path changes the dial address.
+impair_start() {
+  local lf="$1"
+  if [ "$NETEM_OK" = 1 ]; then
+    local pct; pct="$(awk -v x="$lf" 'BEGIN{print x*100}')"
+    ip netns exec "$NS_SRV" tc qdisc add dev veth-srv root netem delay 60ms loss "${pct}%"
+    ip netns exec "$NS_CLI" tc qdisc add dev veth-cli root netem delay 60ms loss "${pct}%"
+    DIAL_ADDR="10.0.0.1:4443"
+  else
+    ip netns exec "$NS_SRV" "$BIN_DIR/impair" \
+      -listen 10.0.0.1:4444 -target 10.0.0.1:4443 -delay 60ms -loss "$lf" >"$RELAY_OUT" 2>&1 &
+    RELAY_PID=$!
+    sleep 0.5
+    DIAL_ADDR="10.0.0.1:4444"
+  fi
+}
+
+impair_stop() {
+  if [ "$NETEM_OK" = 1 ]; then
+    ip netns exec "$NS_SRV" tc qdisc del dev veth-srv root 2>/dev/null || true
+    ip netns exec "$NS_CLI" tc qdisc del dev veth-cli root 2>/dev/null || true
+  else
+    [ -n "$RELAY_PID" ] && kill -TERM "$RELAY_PID" 2>/dev/null
+    RELAY_PID=""
+  fi
+  DIAL_ADDR="10.0.0.1:4443"
+}
+
+# iperf_rate <parallel> [dur] [omit]  runs iperf3 through the tunnel and prints
+# the sender bitrate in Mbit/s (the SUM line for parallel runs). omit skips that
+# many warmup seconds (slow start) from the average. Starts its own one-shot
+# server.
+iperf_rate() {
+  local n="$1" dur="${2:-4}" omit="${3:-0}" out omitflag=""
+  [ "$omit" -gt 0 ] && omitflag="-O $omit"
+  ip netns exec "$NS_SRV" iperf3 -s -1 -B 10.7.0.1 >/dev/null 2>&1 &
+  local sp=$!
+  sleep 0.5
+  out="$(ip netns exec "$NS_CLI" iperf3 -c 10.7.0.1 -t "$dur" $omitflag -P "$n" -f m 2>/dev/null)"
+  kill "$sp" 2>/dev/null || true
+  if [ "$n" -gt 1 ]; then
+    echo "$out" | awk '/SUM/&&/sender/{for(i=1;i<=NF;i++) if($i=="Mbits/sec") print $(i-1)}'
+  else
+    echo "$out" | awk '/sender/{for(i=1;i<=NF;i++) if($i=="Mbits/sec") print $(i-1)}'
+  fi
+}
+
 start_tunnel() {
   : >"$SRV_OUT"; : >"$CLI_OUT"
   ip netns exec "$NS_SRV" "$BIN_DIR/server" \
@@ -54,7 +105,7 @@ start_tunnel() {
   ip netns exec "$NS_CLI" "$BIN_DIR/client" \
     -server "$DIAL_ADDR" -tun siega0 -tun-ip 10.7.0.2/24 >"$CLI_OUT" 2>&1 &
   CLI_PID=$!
-  sleep 2
+  sleep 3   # extra slack so the handshake completes even under 120ms RTT + loss
 }
 
 stop_tunnel() {
@@ -80,15 +131,16 @@ run_pass() { # <label>
   echo "   ^ either replies, or a clear 'message too long'/frag-needed — not silence"
 
   echo
-  echo ">> iperf3 through the tunnel"
-  local ierr0 irbuf0 ierr1 irbuf1
+  echo ">> iperf3 through the tunnel (single stream, with UDP-counter attribution)"
+  local ierr0 irbuf0 ierr1 irbuf1 single par
   ierr0="$(srv_udp 3)"; irbuf0="$(srv_udp 5)"
-  ip netns exec "$NS_SRV" iperf3 -s -1 -B 10.7.0.1 >/dev/null 2>&1 &
-  local ipid=$!
-  sleep 1
-  ip netns exec "$NS_CLI" iperf3 -c 10.7.0.1 -t 5 || echo "(throughput drops under loss — expected)"
-  kill "$ipid" 2>/dev/null || true
+  single="$(iperf_rate 1)"
   ierr1="$(srv_udp 3)"; irbuf1="$(srv_udp 5)"
+  echo "   single-stream: ${single:-?} Mbit/s"
+
+  echo ">> iperf3 through the tunnel (8 parallel streams — realistic multi-flow)"
+  par="$(iperf_rate 8)"
+  echo "   8-stream aggregate: ${par:-?} Mbit/s"
 
   echo
   echo ">> MSS clamp rule (client OUTPUT mangle) — pkts column proves it matched the SYN"
@@ -131,32 +183,47 @@ ip -n "$NS_CLI" link set veth-cli up
 ip -n "$NS_SRV" link set lo up
 ip -n "$NS_CLI" link set lo up
 
+# Select the impairment mechanism now that the veth exists.
+if ip netns exec "$NS_CLI" tc qdisc add dev veth-cli root netem delay 1ms 2>/dev/null; then
+  NETEM_OK=1
+  ip netns exec "$NS_CLI" tc qdisc del dev veth-cli root 2>/dev/null || true
+  echo ">> impairment mechanism: tc-netem"
+else
+  NETEM_OK=0
+  echo ">> impairment mechanism: userspace siega-impair relay (sch_netem unavailable)"
+fi
+
 # ---- PASS 1: clean link ----
 run_pass "clean link"
 
-# ---- PASS 2: mobile-like impairment (delay 60ms + loss 2%) ----
-# Prefer tc-netem; if the kernel lacks sch_netem, fall back to the userspace
-# siega-impair UDP relay, which injects the same delay/loss on the QUIC path.
+# ---- PASS 2: mobile-like impairment (delay 60ms => 120ms RTT, loss 2%) ----
+impair_start 0.02
+run_pass "impaired: 120ms RTT, loss 2% (each direction)"
+impair_stop
+
+# ---- LOSS SWEEP: throughput vs loss at fixed 120ms RTT ----
+# A single TCP flow over a lossy path follows the Mathis model
+# (rate ~ MSS / (RTT * sqrt(p))), so rate*sqrt(loss) should stay roughly
+# constant — a smooth ~1/sqrt(loss) curve, not a cliff. We also show the
+# 8-stream aggregate, which is what real multi-flow traffic gets.
 echo
-if ip netns exec "$NS_CLI" tc qdisc add dev veth-cli root netem delay 60ms loss 2% 2>/dev/null; then
-  echo ">> impairment via tc-netem (delay 60ms loss 2%, each direction)"
-  ip netns exec "$NS_SRV" tc qdisc add dev veth-srv root netem delay 60ms loss 2%
-  run_pass "tc-netem delay 60ms loss 2%"
-  ip netns exec "$NS_CLI" tc qdisc del dev veth-cli root 2>/dev/null
-  ip netns exec "$NS_SRV" tc qdisc del dev veth-srv root 2>/dev/null
-else
-  echo ">> sch_netem unavailable in this kernel — using userspace siega-impair relay instead"
-  ip netns exec "$NS_SRV" "$BIN_DIR/impair" \
-    -listen 10.0.0.1:4444 -target 10.0.0.1:4443 -delay 60ms -loss 0.02 >"$RELAY_OUT" 2>&1 &
-  RELAY_PID=$!
-  sleep 0.5
-  DIAL_ADDR="10.0.0.1:4444"   # client dials the relay
-  run_pass "siega-impair delay 60ms loss 2% (each direction)"
-  DIAL_ADDR="10.0.0.1:4443"
-  kill -TERM "$RELAY_PID" 2>/dev/null; RELAY_PID=""
-  echo ">> relay impairment summary:"
-  grep -E "relaying|relayed=" "$RELAY_OUT" | tail -3 | sed 's/^/   /'
-fi
+echo "############################################################"
+echo "## LOSS SWEEP (RTT 120ms; single-stream Mathis check + 8-stream aggregate)"
+echo "############################################################"
+printf "   %-8s %-16s %-18s %-22s\n" "loss" "1-stream Mbit/s" "8-stream Mbit/s" "1-stream x sqrt(loss)"
+for lf in 0.005 0.01 0.02 0.05; do
+  impair_start "$lf"
+  start_tunnel
+  # Long run with warmup omitted so the average reflects steady state, not the
+  # slow-start transient (critical at 120ms RTT where slow start lasts seconds).
+  s="$(iperf_rate 1 15 4)"; p="$(iperf_rate 8 15 4)"
+  stop_tunnel
+  impair_stop
+  pct="$(awk -v x="$lf" 'BEGIN{printf "%.1f%%", x*100}')"
+  norm="$(awk -v r="${s:-0}" -v l="$lf" 'BEGIN{printf "%.1f", r*sqrt(l)}')"
+  printf "   %-8s %-16s %-18s %-22s\n" "$pct" "${s:-?}" "${p:-?}" "$norm"
+done
+echo "   (last column ~constant => smooth 1/sqrt(loss) curve, no collapse)"
 
 echo
 echo ">> ALL PHASE 0 PASSES COMPLETED"
