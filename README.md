@@ -27,7 +27,7 @@ from passive and active probing.
 | Phase | Scope | State |
 |-------|-------|-------|
 | 0 | PoC tunnel (Linux ↔ Linux, no masking) | ✅ done |
-| 1 | Masking, decoy site, WebTransport, HMAC auth, server | ⏳ next |
+| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (step 1/6: TLS endpoint) |
 | 2 | Windows client (wintun, routes, DNS, kill-switch) | — |
 | 3 | Android client (gomobile, VpnService) | — |
 | 4 | Polish: reconnect, failover, obfusc, metrics, tray/UI | — |
@@ -36,22 +36,43 @@ from passive and active probing.
 
 ```
 cmd/
-  sieganet-server/   server daemon (Linux)
-  sieganet-client/   CLI/daemon client (Windows + Linux for debugging)
+  sieganet-server/   server daemon (Phase 1+: TLS endpoint, decoy, tunnel)
+  sieganet-client/   client (added in Phase 1/2)
   sieganet-ctl/      peer management on the server
+  poc-server/        Phase 0 data-plane PoC server (raw QUIC<->TUN)
+  poc-client/        Phase 0 data-plane PoC client
+  siega-impair/      test-only UDP impairment relay (delay/loss)
 internal/
   protocol/   wire format: datagram framing, padding, control messages
-  auth/       HMAC peer authentication
-  transport/  QUIC/WebTransport wrapper: dial, listen, decoy
+  certs/      pluggable TLS cert source: ACME | file | local CA
+  config/     TOML config loader
+  server/     TCP(h1/h2) + QUIC(h3) endpoint, shared handler
+  auth/       HMAC peer authentication                    (upcoming)
+  transport/  QUIC/WebTransport wrapper: dial, listen
   tunnel/     TUN <-> datagram pump, packet routing
   tundev/     per-OS TUN creation/config (linux.go, windows.go, android.go)
-  peers/      peer model, IP allocation, store
-  obfusc/     optional Salamander-XOR (off by default)
+  peers/      peer model, IP allocation, store            (upcoming)
+  obfusc/     optional Salamander-XOR (off by default)    (upcoming)
 mobile/       thin gomobile-bind layer (primitive types only)
 android/      Android Studio project (Kotlin): VpnService + UI
 configs/      server.example.toml, client.example.toml
 scripts/      test/setup helpers
 ```
+
+## Phase 1 — how to verify by hand
+
+Step 1 (TLS endpoint): the server serves one handler over TCP (HTTP/1.1+HTTP/2)
+and QUIC (HTTP/3) on port 443 with a real, verifiable certificate chain.
+
+```sh
+go test ./internal/server/      # h2 + h3 chain verification, untrusted client rejected
+bash scripts/phase1-tls-check.sh  # manual curl + openssl s_client against a file-mode cert
+```
+
+Expected: `curl --cacert` over TCP returns 200 with `ssl_verify=0` on HTTP/2 and
+HTTP/1.1; `openssl s_client` reports `Verify return code: 0 (ok)` on TLS 1.3; the
+Go test verifies the same over HTTP/3. In production `cert_mode=acme` yields a
+browser-trusted Let's Encrypt certificate.
 
 ## Phase 0 — how to verify by hand
 
@@ -83,14 +104,14 @@ via QUIC DATAGRAMs only (no streams are opened).
 Manual two-host run:
 
 ```sh
-go build -tags phase0_insecure ./cmd/sieganet-server
-go build -tags phase0_insecure ./cmd/sieganet-client
+go build -tags phase0_insecure ./cmd/poc-server
+go build -tags phase0_insecure ./cmd/poc-client
 
 # server host
-sudo ./sieganet-server -listen :4443 -tun-ip 10.7.0.1/24
+sudo ./poc-server -listen :4443 -tun-ip 10.7.0.1/24
 
 # client host
-sudo ./sieganet-client -server <server-ip>:4443 -tun-ip 10.7.0.2/24
+sudo ./poc-client -server <server-ip>:4443 -tun-ip 10.7.0.2/24
 ping 10.7.0.1
 ```
 

@@ -28,7 +28,7 @@ func main() {
 	rxWorkers := flag.Int("rx-workers", 1, "datagram receive workers (>1 drains quic-go's rcv queue faster on fast links, may reorder)")
 	flag.Parse()
 
-	log.SetPrefix("[sieganet-client] ")
+	log.SetPrefix("[poc-client] ")
 	log.Printf("Phase 0 PoC — InsecureSkipVerify, no masking")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

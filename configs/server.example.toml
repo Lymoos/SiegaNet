@@ -1,14 +1,25 @@
-# SiegaNet server config (used from Phase 1 onward; Phase 0 uses CLI flags).
-domain          = "example.com"                 # domain for the ACME certificate
-listen          = ":443"
-tunnel_path     = "/wt/CHANGE_ME"               # magic WebTransport path
-decoy_mode      = "proxy"                        # "proxy" | "static"
-decoy_target    = "https://example-upstream"    # used when decoy_mode = "proxy"
-decoy_dir       = "./site"                       # used when decoy_mode = "static"
-inner_subnet    = "10.7.0.0/24"
-server_inner_ip = "10.7.0.1"
-dns             = "1.1.1.1"                      # DNS handed to clients
-pad_min         = 0
-pad_max         = 256
-obfusc          = false
-peers_store     = "./peers.toml"
+# SiegaNet server config.
+domain     = "example.com"            # certificate / SNI domain
+listen_tcp = ":443"                   # HTTP/1.1 + HTTP/2 (decoy + ACME challenge)
+listen_udp = ":443"                   # HTTP/3 over QUIC (decoy + WebTransport tunnel)
+
+# Certificate source: "acme" (Let's Encrypt, TLS-ALPN-01) | "file" | "localca" (dev).
+cert_mode      = "acme"
+acme_cache_dir = "./acme-cache"
+acme_email     = "you@example.com"
+# cert_file    = "./fullchain.pem"    # used when cert_mode = "file"
+# key_file     = "./privkey.pem"
+
+# ---- added in later Phase 1 steps ----
+# tunnel_path       = "/wt/CHANGE_ME"          # magic WebTransport path
+# decoy_mode        = "static"                 # "static" | "proxy"
+# decoy_dir         = "./site"                 # static backend root
+# decoy_target      = "https://example-upstream"  # proxy upstream
+# inner_subnet      = "10.7.0.0/24"
+# server_inner_ip   = "10.7.0.1"
+# dns               = "1.1.1.1"
+# pad_min           = 0
+# pad_max           = 256
+# obfusc            = false
+# allow_inter_client = true                    # client<->client routing
+# peers_store       = "./peers.toml"

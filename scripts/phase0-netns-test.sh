@@ -168,8 +168,8 @@ echo ">> raising UDP socket buffer limits (sysctl)"
 sysctl -w net.core.rmem_max=16777216 net.core.wmem_max=16777216 >/dev/null
 
 echo ">> building binaries (-tags phase0_insecure)"
-go build -tags phase0_insecure -o "$BIN_DIR/server" ./cmd/sieganet-server
-go build -tags phase0_insecure -o "$BIN_DIR/client" ./cmd/sieganet-client
+go build -tags phase0_insecure -o "$BIN_DIR/server" ./cmd/poc-server
+go build -tags phase0_insecure -o "$BIN_DIR/client" ./cmd/poc-client
 go build -o "$BIN_DIR/impair" ./cmd/siega-impair
 
 echo ">> creating namespaces and veth"
