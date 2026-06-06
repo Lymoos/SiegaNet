@@ -1,0 +1,14 @@
+# SiegaNet server config (used from Phase 1 onward; Phase 0 uses CLI flags).
+domain          = "example.com"                 # domain for the ACME certificate
+listen          = ":443"
+tunnel_path     = "/wt/CHANGE_ME"               # magic WebTransport path
+decoy_mode      = "proxy"                        # "proxy" | "static"
+decoy_target    = "https://example-upstream"    # used when decoy_mode = "proxy"
+decoy_dir       = "./site"                       # used when decoy_mode = "static"
+inner_subnet    = "10.7.0.0/24"
+server_inner_ip = "10.7.0.1"
+dns             = "1.1.1.1"                      # DNS handed to clients
+pad_min         = 0
+pad_max         = 256
+obfusc          = false
+peers_store     = "./peers.toml"

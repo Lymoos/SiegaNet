@@ -1,0 +1,8 @@
+# SiegaNet client config (used from Phase 1 onward; Phase 0 uses CLI flags).
+server      = "example.com:443"
+peer_id     = "kristina"
+psk         = "BASE64_PSK"
+tunnel_path = "/wt/CHANGE_ME"
+mtu         = 1280          # upper bound; the runtime may lower it via the MTU gate
+obfusc      = false
+kill_switch = true

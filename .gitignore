@@ -1,0 +1,9 @@
+# build artifacts
+/sieganet-server
+/sieganet-client
+/sieganet-ctl
+*.exe
+*.aar
+# local config & secrets
+*.local.toml
+peers.toml
