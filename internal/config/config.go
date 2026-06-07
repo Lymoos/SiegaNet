@@ -24,10 +24,9 @@ type Server struct {
 	ACMEEmail    string `toml:"acme_email"`
 
 	// Decoy / transparent relay.
-	DecoyMode          string `toml:"decoy_mode"`           // "static" (default) | "proxy"
-	DecoyDir           string `toml:"decoy_dir"`            // static files; "" => embedded site
-	DecoyTarget        string `toml:"decoy_target"`         // upstream for proxy mode
-	DecoyBackendListen string `toml:"decoy_backend_listen"` // static backend bind; "" => 127.0.0.1:0
+	DecoyMode   string `toml:"decoy_mode"`   // "static" (default) | "proxy"
+	DecoyDir    string `toml:"decoy_dir"`    // static files; "" => embedded site
+	DecoyTarget string `toml:"decoy_target"` // upstream for proxy mode
 }
 
 // LoadServer reads and validates a server config file.

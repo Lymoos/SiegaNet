@@ -39,16 +39,19 @@ func main() {
 	// site. Non-tunnel traffic (and, from step 4, failed auth on the magic path)
 	// gets the backend's bytes, never a SiegaNet-generated error.
 	dec, err := decoy.New(decoy.Config{
-		Mode:          cfg.DecoyMode,
-		Dir:           cfg.DecoyDir,
-		Target:        cfg.DecoyTarget,
-		BackendListen: cfg.DecoyBackendListen,
+		Mode:   cfg.DecoyMode,
+		Dir:    cfg.DecoyDir,
+		Target: cfg.DecoyTarget,
 	})
 	if err != nil {
 		log.Fatalf("decoy: %v", err)
 	}
 	defer dec.Close()
-	log.Printf("decoy_mode=%s relaying to %s", cfg.DecoyMode, dec.BackendURL())
+	if up := dec.Upstream(); up != "" {
+		log.Printf("decoy_mode=proxy relaying to %s", up)
+	} else {
+		log.Printf("decoy_mode=static serving site (dir=%q, embedded if empty)", cfg.DecoyDir)
+	}
 
 	srv := server.New(src, dec.Handler())
 
