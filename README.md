@@ -27,10 +27,31 @@ from passive and active probing.
 | Phase | Scope | State |
 |-------|-------|-------|
 | 0 | PoC tunnel (Linux ↔ Linux, no masking) | ✅ done |
-| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (steps 1–2/6: TLS endpoint + decoy relay) |
+| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (steps 1–3/6: TLS endpoint + decoy relay + HMAC auth) |
 | 2 | Windows client (wintun, routes, DNS, kill-switch) | — |
 | 3 | Android client (gomobile, VpnService) | — |
 | 4 | Polish: reconnect, failover, obfusc, metrics, tray/UI | — |
+
+## Roadmap notes (design-forward; not the current step)
+
+Decisions captured now so later phases don't force a rewrite:
+
+**Config-leak resistance** (a config necessarily lives on each device):
+- **PSK is strictly per-peer** — a hard requirement, never a shared/global key.
+- **Per-peer session accounting in the session router** (introduced in Phase 1):
+  the router tracks active sessions per `peerID`, so an abnormal number of
+  simultaneous devices/IPs for one peer can be flagged and (optionally)
+  auto-banned later. This catches a shared config at the server.
+- **PSK revoke / rotate** via the peer store + `sieganet-ctl` (`revoke`,
+  `rotate`); the store interface reserves these from the start.
+
+**Distribution** (Phase 5, multi-node):
+- Peer store sits **behind an interface** (mandatory) so a multi-node backend can
+  replace the file store.
+- **Per-peer SNI / path / port + IP rotation** (Phase 4, multi-transport) so a
+  burned peer costs one peer, not the server.
+- The **Docker node** is written so a friend can stand up their own node
+  (distributed "friend runs a node" model), not just the original operator.
 
 ## Layout
 
