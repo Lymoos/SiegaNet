@@ -10,16 +10,19 @@ acme_email     = "you@example.com"
 # cert_file    = "./fullchain.pem"    # used when cert_mode = "file"
 # key_file     = "./privkey.pem"
 
-# ---- added in later Phase 1 steps ----
-# tunnel_path       = "/wt/CHANGE_ME"          # magic WebTransport path
-# decoy_mode        = "static"                 # "static" | "proxy"
-# decoy_dir         = "./site"                 # static backend root
-# decoy_target      = "https://example-upstream"  # proxy upstream
-# inner_subnet      = "10.7.0.0/24"
-# server_inner_ip   = "10.7.0.1"
-# dns               = "1.1.1.1"
-# pad_min           = 0
-# pad_max           = 256
-# obfusc            = false
-# allow_inter_client = true                    # client<->client routing
-# peers_store       = "./peers.toml"
+# Decoy: "static" serves the embedded (or decoy_dir) site directly; "proxy"
+# transparently reverse-proxies to decoy_target.
+decoy_mode   = "static"
+# decoy_dir  = "./site"
+# decoy_target = "https://example-upstream"
+
+# Tunnel / peers.
+tunnel_path        = "/wt/CHANGE_ME"  # magic WebTransport path (keep secret)
+inner_subnet       = "10.7.0.0/24"
+server_inner_ip    = "10.7.0.1"
+dns                = "1.1.1.1"        # DNS handed to clients
+peers_store        = "./peers.toml"
+pad_min            = 0
+pad_max            = 256
+obfusc             = false            # Salamander-XOR (Phase 4)
+allow_inter_client = true             # client<->client routing

@@ -27,14 +27,31 @@ type Server struct {
 	DecoyMode   string `toml:"decoy_mode"`   // "static" (default) | "proxy"
 	DecoyDir    string `toml:"decoy_dir"`    // static files; "" => embedded site
 	DecoyTarget string `toml:"decoy_target"` // upstream for proxy mode
+
+	// Tunnel / peers (used from step 5 onward).
+	TunnelPath       string `toml:"tunnel_path"`     // magic WebTransport path
+	InnerSubnet      string `toml:"inner_subnet"`    // e.g. 10.7.0.0/24
+	ServerInnerIP    string `toml:"server_inner_ip"` // e.g. 10.7.0.1
+	DNS              string `toml:"dns"`             // DNS handed to clients
+	PeersStore       string `toml:"peers_store"`     // path to peers.toml
+	PadMin           int    `toml:"pad_min"`         // datagram padding range
+	PadMax           int    `toml:"pad_max"`
+	Obfusc           bool   `toml:"obfusc"`             // Salamander-XOR (Phase 4)
+	AllowInterClient bool   `toml:"allow_inter_client"` // client<->client routing
 }
 
 // LoadServer reads and validates a server config file.
 func LoadServer(path string) (*Server, error) {
 	c := &Server{
-		ListenTCP: ":443",
-		ListenUDP: ":443",
-		CertMode:  "acme",
+		ListenTCP:        ":443",
+		ListenUDP:        ":443",
+		CertMode:         "acme",
+		InnerSubnet:      "10.7.0.0/24",
+		ServerInnerIP:    "10.7.0.1",
+		DNS:              "1.1.1.1",
+		PeersStore:       "./peers.toml",
+		PadMax:           256,
+		AllowInterClient: true,
 	}
 	if _, err := toml.DecodeFile(path, c); err != nil {
 		return nil, fmt.Errorf("config: %w", err)

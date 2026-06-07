@@ -27,7 +27,7 @@ from passive and active probing.
 | Phase | Scope | State |
 |-------|-------|-------|
 | 0 | PoC tunnel (Linux ↔ Linux, no masking) | ✅ done |
-| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (steps 1–4/6: + WebTransport tunnel & auth mount) |
+| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (steps 1–5/6: + peer store, IP allocation, sieganet-ctl) |
 | 2 | Windows client (wintun, routes, DNS, kill-switch) | — |
 | 3 | Android client (gomobile, VpnService) | — |
 | 4 | Polish: reconnect, failover, obfusc, metrics, tray/UI | — |
@@ -67,8 +67,10 @@ internal/
   protocol/   wire format: datagram framing, padding, control messages
   certs/      pluggable TLS cert source: ACME | file | local CA
   config/     TOML config loader
-  server/     TCP(h1/h2) + QUIC(h3) endpoint, shared handler
-  auth/       HMAC peer authentication                    (upcoming)
+  server/     TCP(h1/h2) + QUIC(h3) endpoint, WebTransport tunnel, auth mount
+  decoy/      realistic static site + transparent relay
+  peers/      peer store interface, TOML impl, IP allocation, client config + QR
+  auth/       HMAC peer authentication
   transport/  QUIC/WebTransport wrapper: dial, listen
   tunnel/     TUN <-> datagram pump, packet routing
   tundev/     per-OS TUN creation/config (linux.go, windows.go, android.go)
@@ -128,6 +130,22 @@ overlap, with no systematic per-path slowdown. The data-plane pump is reused ove
 the WebTransport session through the transport-neutral `Datagrammer` interface
 (proven over a non-QUIC mock transport), so the router and auth carry no
 QUIC-specific assumptions.
+
+Step 5 (peer store + sieganet-ctl): peers live behind the `peers.Store`
+interface (lookup/add/remove/list/revoke/rotate-psk + runtime session counters),
+with a TOML implementation. Each peer has its own CSPRNG PSK (no shared-key
+mode) and a stable inner-subnet IP that survives restarts and is never
+reassigned while the peer exists; removal frees the IP for reuse and pool
+exhaustion is reported.
+
+```sh
+go test ./internal/peers/
+sieganet-ctl -config server.toml add <name>     # CSPRNG PSK + next free IP + client.toml + QR
+sieganet-ctl -config server.toml list            # incl. active-session count
+sieganet-ctl -config server.toml revoke <name>   # auth refused, record kept
+sieganet-ctl -config server.toml rotate-psk <name>
+sieganet-ctl -config server.toml remove <name>
+```
 
 ## Phase 0 — how to verify by hand
 
