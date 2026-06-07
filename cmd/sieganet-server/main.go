@@ -53,7 +53,9 @@ func main() {
 		log.Printf("decoy_mode=static serving site (dir=%q, embedded if empty)", cfg.DecoyDir)
 	}
 
-	srv := server.New(src, dec.Handler())
+	// The tunnel (magic path + auth + session router) is wired in once the peer
+	// store lands; until then the endpoint serves only the decoy.
+	srv := server.New(server.Config{Cert: src, Decoy: dec.Handler()})
 
 	ln, err := net.Listen("tcp", cfg.ListenTCP)
 	if err != nil {

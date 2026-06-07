@@ -38,6 +38,16 @@ const (
 	writeBacklog = 2048 // TUN-write queue depth; relieves quic-go's 128-deep rcv queue
 )
 
+// Datagrammer is the unreliable-datagram transport the data-plane rides on. It
+// is deliberately the minimal surface shared by a raw *quic.Conn (Phase 0) and a
+// *webtransport.Session (Phase 1+), so the pump, the session router and the auth
+// layer carry no QUIC-specific assumptions and a second transport can be added
+// later without touching the core (the swappable-transport requirement).
+type Datagrammer interface {
+	SendDatagram([]byte) error
+	ReceiveDatagram(context.Context) ([]byte, error)
+}
+
 // Config parameterises a tunnel run.
 type Config struct {
 	Pad         protocol.PadRange
@@ -65,7 +75,7 @@ type pooledPkt struct {
 }
 
 // Run drives the data-plane until the connection or context ends.
-func Run(ctx context.Context, dev tun.Device, conn *quic.Conn, cfg Config) error {
+func Run(ctx context.Context, dev tun.Device, tr Datagrammer, cfg Config) error {
 	if cfg.Stats == nil {
 		cfg.Stats = &Stats{}
 	}
@@ -90,9 +100,9 @@ func Run(ctx context.Context, dev tun.Device, conn *quic.Conn, cfg Config) error
 	wg.Add(1)
 	go func() { defer wg.Done(); tunWriter(cctx, dev, writeCh, pool, cfg.Stats) }()
 
-	go func() { errc <- pumpOutbound(dev, conn, cfg, gate, writeCh, pool) }()
+	go func() { errc <- pumpOutbound(dev, tr, cfg, gate, writeCh, pool) }()
 	for i := 0; i < rxWorkers; i++ {
-		go func() { errc <- pumpInbound(cctx, conn, cfg.Stats, writeCh, pool) }()
+		go func() { errc <- pumpInbound(cctx, tr, cfg.Stats, writeCh, pool) }()
 	}
 
 	var err error
@@ -120,7 +130,7 @@ func enqueueWrite(pkt []byte, writeCh chan *pooledPkt, pool *sync.Pool, dropCtr 
 }
 
 // pumpOutbound reads packets from the TUN and sends each as a DATAGRAM.
-func pumpOutbound(dev tun.Device, conn *quic.Conn, cfg Config, gate *atomic.Int64, writeCh chan *pooledPkt, pool *sync.Pool) error {
+func pumpOutbound(dev tun.Device, tr Datagrammer, cfg Config, gate *atomic.Int64, writeCh chan *pooledPkt, pool *sync.Pool) error {
 	st := cfg.Stats
 	batch := dev.BatchSize()
 	bufs := make([][]byte, batch)
@@ -164,7 +174,7 @@ func pumpOutbound(dev tun.Device, conn *quic.Conn, cfg Config, gate *atomic.Int6
 				handleOversize(pkt)
 				continue
 			}
-			if err := conn.SendDatagram(sendBuf); err != nil {
+			if err := tr.SendDatagram(sendBuf); err != nil {
 				var tooLarge *quic.DatagramTooLargeError
 				if errors.As(err, &tooLarge) {
 					// Path MTU shrank: lower the gate and tell the caller so it
@@ -200,9 +210,9 @@ func lowerGate(gate *atomic.Int64, newMax int64, cfg Config) {
 }
 
 // pumpInbound receives DATAGRAMs and queues the carried IP packet for the writer.
-func pumpInbound(ctx context.Context, conn *quic.Conn, st *Stats, writeCh chan *pooledPkt, pool *sync.Pool) error {
+func pumpInbound(ctx context.Context, tr Datagrammer, st *Stats, writeCh chan *pooledPkt, pool *sync.Pool) error {
 	for {
-		dg, err := conn.ReceiveDatagram(ctx)
+		dg, err := tr.ReceiveDatagram(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return nil

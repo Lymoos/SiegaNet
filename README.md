@@ -27,7 +27,7 @@ from passive and active probing.
 | Phase | Scope | State |
 |-------|-------|-------|
 | 0 | PoC tunnel (Linux ↔ Linux, no masking) | ✅ done |
-| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (steps 1–3/6: TLS endpoint + decoy relay + HMAC auth) |
+| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (steps 1–4/6: + WebTransport tunnel & auth mount) |
 | 2 | Windows client (wintun, routes, DNS, kill-switch) | — |
 | 3 | Android client (gomobile, VpnService) | — |
 | 4 | Polish: reconnect, failover, obfusc, metrics, tray/UI | — |
@@ -109,6 +109,25 @@ Expected: every path (incl. the unknown-path 404) is byte-identical between the
 TLS front and the backend (excluding Date and the intentional Alt-Svc); odd
 requests (bad Range → 416, weird method, HTTP/0.9 → 400) behave exactly like the
 backend web server, with no custom errors or panics.
+
+Step 4 (WebTransport tunnel + auth mount): the tunnel rides a WebTransport
+session on a secret magic path, reachable only after HMAC auth. Auth is computed
+on every request (constant work) and an unauthenticated request never even
+compares the path, so probing the magic path is indistinguishable from any other
+404 in both the full response and timing.
+
+```sh
+bash scripts/phase1-stealth.sh
+```
+
+Expected: a valid peer opens the WebTransport datagram channel (echo works);
+adjacent-minute tokens succeed, expired/wrong/unknown ones fail to the decoy;
+magic-path probes are byte-identical to a generic 404; and the timing
+distributions (p50/p90/p99 + histogram) of magic-path probing vs a generic 404
+overlap, with no systematic per-path slowdown. The data-plane pump is reused over
+the WebTransport session through the transport-neutral `Datagrammer` interface
+(proven over a non-QUIC mock transport), so the router and auth carry no
+QUIC-specific assumptions.
 
 ## Phase 0 — how to verify by hand
 

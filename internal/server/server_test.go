@@ -24,7 +24,7 @@ func startTestServer(t *testing.T, h http.Handler) (tcpPort, udpPort int, ca *ce
 	if err != nil {
 		t.Fatalf("local CA: %v", err)
 	}
-	srv := server.New(ca, h)
+	srv := server.New(server.Config{Cert: ca, Decoy: h})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
