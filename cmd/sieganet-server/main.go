@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 
 	"github.com/lymoos/sieganet/internal/certs"
 	"github.com/lymoos/sieganet/internal/config"
+	"github.com/lymoos/sieganet/internal/decoy"
 	"github.com/lymoos/sieganet/internal/server"
 )
 
@@ -35,13 +35,22 @@ func main() {
 		log.Fatalf("certificate source: %v", err)
 	}
 
-	// Step 1 placeholder handler; replaced by the decoy/relay in step 2.
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte("SiegaNet endpoint up\n"))
+	// The decoy is the front handler: a transparent relay to a real backend
+	// site. Non-tunnel traffic (and, from step 4, failed auth on the magic path)
+	// gets the backend's bytes, never a SiegaNet-generated error.
+	dec, err := decoy.New(decoy.Config{
+		Mode:          cfg.DecoyMode,
+		Dir:           cfg.DecoyDir,
+		Target:        cfg.DecoyTarget,
+		BackendListen: cfg.DecoyBackendListen,
 	})
+	if err != nil {
+		log.Fatalf("decoy: %v", err)
+	}
+	defer dec.Close()
+	log.Printf("decoy_mode=%s relaying to %s", cfg.DecoyMode, dec.BackendURL())
 
-	srv := server.New(src, handler)
+	srv := server.New(src, dec.Handler())
 
 	ln, err := net.Listen("tcp", cfg.ListenTCP)
 	if err != nil {

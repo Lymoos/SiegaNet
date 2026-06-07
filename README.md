@@ -27,7 +27,7 @@ from passive and active probing.
 | Phase | Scope | State |
 |-------|-------|-------|
 | 0 | PoC tunnel (Linux ↔ Linux, no masking) | ✅ done |
-| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (step 1/6: TLS endpoint) |
+| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (steps 1–2/6: TLS endpoint + decoy relay) |
 | 2 | Windows client (wintun, routes, DNS, kill-switch) | — |
 | 3 | Android client (gomobile, VpnService) | — |
 | 4 | Polish: reconnect, failover, obfusc, metrics, tray/UI | — |
@@ -73,6 +73,21 @@ Expected: `curl --cacert` over TCP returns 200 with `ssl_verify=0` on HTTP/2 and
 HTTP/1.1; `openssl s_client` reports `Verify return code: 0 (ok)` on TLS 1.3; the
 Go test verifies the same over HTTP/3. In production `cert_mode=acme` yields a
 browser-trusted Let's Encrypt certificate.
+
+Step 2 (decoy + transparent relay): the endpoint serves a realistic static site
+and, Reality-style, reverse-proxies **every** non-tunnel request to a real local
+backend — so probers and (from step 4) failed-auth requests get the backend's
+exact bytes, never a SiegaNet-generated 404.
+
+```sh
+go test ./internal/decoy/         # front == backend for pages and unknown paths
+bash scripts/phase1-decoy-diff.sh # live curl-diff front vs backend + weird requests
+```
+
+Expected: every path (incl. the unknown-path 404) is byte-identical between the
+TLS front and the backend (excluding Date and the intentional Alt-Svc); odd
+requests (bad Range → 416, weird method, HTTP/0.9 → 400) behave exactly like the
+backend web server, with no custom errors or panics.
 
 ## Phase 0 — how to verify by hand
 

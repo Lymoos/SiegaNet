@@ -22,6 +22,12 @@ type Server struct {
 	KeyFile      string `toml:"key_file"`
 	ACMECacheDir string `toml:"acme_cache_dir"`
 	ACMEEmail    string `toml:"acme_email"`
+
+	// Decoy / transparent relay.
+	DecoyMode          string `toml:"decoy_mode"`           // "static" (default) | "proxy"
+	DecoyDir           string `toml:"decoy_dir"`            // static files; "" => embedded site
+	DecoyTarget        string `toml:"decoy_target"`         // upstream for proxy mode
+	DecoyBackendListen string `toml:"decoy_backend_listen"` // static backend bind; "" => 127.0.0.1:0
 }
 
 // LoadServer reads and validates a server config file.
@@ -56,6 +62,19 @@ func (c *Server) validate() error {
 		}
 	default:
 		return fmt.Errorf("config: unknown cert_mode %q", c.CertMode)
+	}
+
+	if c.DecoyMode == "" {
+		c.DecoyMode = "static"
+	}
+	switch c.DecoyMode {
+	case "static":
+	case "proxy":
+		if c.DecoyTarget == "" {
+			return fmt.Errorf("config: decoy_mode=proxy requires decoy_target")
+		}
+	default:
+		return fmt.Errorf("config: unknown decoy_mode %q", c.DecoyMode)
 	}
 	return nil
 }
