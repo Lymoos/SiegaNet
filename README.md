@@ -27,8 +27,8 @@ from passive and active probing.
 | Phase | Scope | State |
 |-------|-------|-------|
 | 0 | PoC tunnel (Linux ↔ Linux, no masking) | ✅ done |
-| 1 | Masking, decoy site, WebTransport, HMAC auth, server | 🚧 in progress (steps 1–5/6: + peer store, IP allocation, sieganet-ctl) |
-| 2 | Windows client (wintun, routes, DNS, kill-switch) | — |
+| 1 | Masking, decoy site, WebTransport, HMAC auth, server | ✅ done |
+| 2 | Windows client (wintun, routes, DNS, kill-switch) | ⏳ next |
 | 3 | Android client (gomobile, VpnService) | — |
 | 4 | Polish: reconnect, failover, obfusc, metrics, tray/UI | — |
 
@@ -146,6 +146,32 @@ sieganet-ctl -config server.toml revoke <name>   # auth refused, record kept
 sieganet-ctl -config server.toml rotate-psk <name>
 sieganet-ctl -config server.toml remove <name>
 ```
+
+Step 6 (session router + end-to-end): the server owns one TUN and routes peers
+by inner IP, with source-IP anti-spoofing (a peer can only use its assigned IP,
+so peers are isolated), an `allow_inter_client` policy (off by default), and
+per-peer session counters that decrement on any disconnect (graceful or abrupt).
+
+```sh
+go test ./internal/router/        # anti-spoof isolation, c2c on/off, abrupt-disconnect counter
+sudo bash scripts/phase1-e2e-test.sh   # whole chain over WebTransport in 3 netns
+```
+
+The e2e harness runs the full chain — decoy TLS endpoint → magic-path
+WebTransport → HMAC auth → router → full-tunnel + MASQUERADE → tunnel DNS — and
+checks: ping the server inner IP and an "internet" host through the tunnel,
+iperf3 through the tunnel, a DNS-leak check (no plaintext `:53` on the public
+link; the query is observed arriving on the internet side), and one impaired
+pass (120ms RTT + 2% loss) proving the WebTransport layer survives.
+
+### Phase 1 acceptance (brief §5, a–d)
+
+| Criterion | Verified by |
+|-----------|-------------|
+| (a) `/` and any path return the decoy, indistinguishable from a real site | `internal/decoy` byte-diff tests + `scripts/phase1-decoy-diff.sh` (front == stock FileServer incl. order; only Alt-Svc added) |
+| (b) the magic path without auth behaves like the decoy/404, not a tunnel | `internal/server` `TestMagicPathProbeLooksLikeGeneric404` + auth runs on every request, path compared only when authed |
+| (c) a valid-PSK client tunnels all traffic and DNS through the server, no DNS leak | `scripts/phase1-e2e-test.sh` TEST 1–4 (ping/iperf via MASQUERADE; 0 plaintext `:53` on the public link) |
+| (d) probing the magic path without a token is indistinguishable (body + timing) | `internal/server` `TestTimingParityMagicVsGeneric` (overlapping p50/p90/p99 histograms) + (b) |
 
 ## Phase 0 — how to verify by hand
 

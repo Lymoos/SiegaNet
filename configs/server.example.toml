@@ -25,4 +25,4 @@ peers_store        = "./peers.toml"
 pad_min            = 0
 pad_max            = 256
 obfusc             = false            # Salamander-XOR (Phase 4)
-allow_inter_client = true             # client<->client routing
+allow_inter_client = false            # client<->client routing (off by default)

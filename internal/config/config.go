@@ -40,18 +40,41 @@ type Server struct {
 	AllowInterClient bool   `toml:"allow_inter_client"` // client<->client routing
 }
 
+// Client is the client-side configuration (client.toml).
+type Client struct {
+	Server     string `toml:"server"` // host:port
+	PeerID     string `toml:"peer_id"`
+	PSK        string `toml:"psk"` // base64
+	TunnelPath string `toml:"tunnel_path"`
+	InnerIP    string `toml:"inner_ip"` // e.g. 10.7.0.2
+	DNS        string `toml:"dns"`
+	MTU        int    `toml:"mtu"`
+	KillSwitch bool   `toml:"kill_switch"`
+}
+
+// LoadClient reads a client config file.
+func LoadClient(path string) (*Client, error) {
+	c := &Client{MTU: 1280}
+	if _, err := toml.DecodeFile(path, c); err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
+	if c.Server == "" || c.PeerID == "" || c.PSK == "" || c.TunnelPath == "" {
+		return nil, fmt.Errorf("config: server, peer_id, psk and tunnel_path are required")
+	}
+	return c, nil
+}
+
 // LoadServer reads and validates a server config file.
 func LoadServer(path string) (*Server, error) {
 	c := &Server{
-		ListenTCP:        ":443",
-		ListenUDP:        ":443",
-		CertMode:         "acme",
-		InnerSubnet:      "10.7.0.0/24",
-		ServerInnerIP:    "10.7.0.1",
-		DNS:              "1.1.1.1",
-		PeersStore:       "./peers.toml",
-		PadMax:           256,
-		AllowInterClient: true,
+		ListenTCP:     ":443",
+		ListenUDP:     ":443",
+		CertMode:      "acme",
+		InnerSubnet:   "10.7.0.0/24",
+		ServerInnerIP: "10.7.0.1",
+		DNS:           "1.1.1.1",
+		PeersStore:    "./peers.toml",
+		PadMax:        256,
 	}
 	if _, err := toml.DecodeFile(path, c); err != nil {
 		return nil, fmt.Errorf("config: %w", err)

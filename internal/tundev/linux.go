@@ -45,6 +45,42 @@ func AddRoute(name, dest string) error {
 	return run("ip", "route", "add", dest, "dev", name)
 }
 
+// AddRouteDev adds an on-link route for dest (CIDR) over an arbitrary device,
+// used by the client to keep the tunnel's own endpoint off the tunnel.
+func AddRouteDev(dest, dev string) error {
+	return run("ip", "route", "add", dest, "dev", dev)
+}
+
+// EnableIPForward turns on IPv4 forwarding (server side).
+func EnableIPForward() error {
+	return run("sysctl", "-w", "net.ipv4.ip_forward=1")
+}
+
+// AddMasquerade SNATs traffic from subnet leaving via egress (server uplink).
+func AddMasquerade(subnet, egress string) error {
+	return run("iptables", "-t", "nat", "-A", "POSTROUTING", "-s", subnet, "-o", egress, "-j", "MASQUERADE")
+}
+
+// DelMasquerade removes the rule added by AddMasquerade (best-effort).
+func DelMasquerade(subnet, egress string) {
+	_ = run("iptables", "-t", "nat", "-D", "POSTROUTING", "-s", subnet, "-o", egress, "-j", "MASQUERADE")
+}
+
+// SetResolvConf points the system resolver at dns (client full-tunnel DNS).
+// Returns the previous contents so the caller can restore on exit.
+func SetResolvConf(dns string) (previous []byte, err error) {
+	previous, _ = os.ReadFile("/etc/resolv.conf")
+	content := fmt.Sprintf("# SiegaNet tunnel DNS\nnameserver %s\n", dns)
+	return previous, os.WriteFile("/etc/resolv.conf", []byte(content), 0o644)
+}
+
+// RestoreResolvConf writes back previously-saved resolver contents.
+func RestoreResolvConf(previous []byte) {
+	if previous != nil {
+		_ = os.WriteFile("/etc/resolv.conf", previous, 0o644)
+	}
+}
+
 // SetMTU sets the interface MTU at runtime. The data-plane calls this after it
 // has probed the actual maximum QUIC datagram size, so the inner MTU is clamped
 // to the path rather than a baked-in constant (§3.4 MTU gate).
