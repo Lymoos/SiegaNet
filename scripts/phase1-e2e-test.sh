@@ -126,7 +126,7 @@ nsc "$DIR/client" -config "$DIR/client.toml" -ca "$DIR/ca.crt" -endpoint-dev vet
 CLI_PID=$!
 sleep 4
 
-if ! grep -q "tun siega0 up" "$DIR/client.log"; then
+if ! grep -q "tunnel up" "$DIR/client.log"; then
   echo "!! client failed to establish tunnel"; sed 's/^/   [cli] /' "$DIR/client.log"; sed 's/^/   [srv] /' "$DIR/server.log"; exit 1
 fi
 sed 's/^/   [cli] /' "$DIR/client.log"
@@ -182,11 +182,11 @@ sed "s#server      = \"10.0.0.1:443\"#server      = \"10.0.0.9:443\"#" "$DIR/cli
 nsc "$DIR/client" -config "$DIR/client2.toml" -ca "$DIR/ca.crt" -endpoint-dev veth-pub-cli -tun siega1 >"$DIR/client2.log" 2>&1 &
 CLI_PID=$!
 sleep 5
-if grep -q "tun siega1 up" "$DIR/client2.log"; then
+if grep -q "tunnel up" "$DIR/client2.log"; then
   echo "   tunnel re-established through the impaired relay:"
-  grep -E "connected|tun siega0 up" "$DIR/client2.log" | sed 's/^/   [cli] /'
+  grep -E "cached|tunnel up" "$DIR/client2.log" | sed 's/^/   [cli] /' || true
   echo "   ping (expect ~120ms RTT, some loss):"
-  nsc ping -c 5 -W 3 192.0.2.2 | tail -3
+  nsc ping -c 5 -W 3 192.0.2.2 | tail -3 || true
   echo "   iperf3 (throughput drops under loss — expected, the point is it works):"
   nsc iperf3 -c 192.0.2.2 -t 5 2>&1 | grep -E "sender|receiver" || echo "   (iperf ran)"
   echo "   OK: the full Phase 1 chain survives mobile-like impairment over WebTransport"

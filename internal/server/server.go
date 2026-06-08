@@ -72,6 +72,12 @@ func New(cfg Config) *Server {
 	// the QUIC connection into the request context (required by Upgrade).
 	webtransport.ConfigureHTTP3Server(s.wt.H3)
 	s.wt.H3.Handler = s.topHandler()
+	// Build the TCP server up front so ServeTCP (in a goroutine) and Close don't
+	// race on the field.
+	s.httpSrv = &http.Server{
+		Handler:   s.altSvc(s.topHandler()),
+		TLSConfig: s.tcpTLSConfig(),
+	}
 	return s
 }
 
@@ -127,12 +133,9 @@ func (s *Server) altSvc(h http.Handler) http.Handler {
 	})
 }
 
-// ServeTCP serves HTTP/1.1+HTTP/2 over TLS on ln. Blocks until Close.
+// ServeTCP serves HTTP/1.1+HTTP/2 over TLS on ln. Blocks until Close. The
+// http.Server is built in New(), so this and Close() never race on the field.
 func (s *Server) ServeTCP(ln net.Listener) error {
-	s.httpSrv = &http.Server{
-		Handler:   s.altSvc(s.topHandler()),
-		TLSConfig: s.tcpTLSConfig(),
-	}
 	return s.httpSrv.ServeTLS(ln, "", "")
 }
 
