@@ -21,12 +21,6 @@ func Open(name string, mtu int) (tun.Device, error) {
 	return dev, nil
 }
 
-// ActualName returns the kernel-assigned interface name (CreateTUN may pick a
-// different name than requested, e.g. when the requested one is taken).
-func ActualName(dev tun.Device) (string, error) {
-	return dev.Name()
-}
-
 // ConfigureInterface assigns an address and brings the link up via iproute2.
 // cidr is in "10.7.0.2/24" form. Phase 0 shells out to `ip`; later phases use
 // netlink directly.

@@ -8,7 +8,15 @@
 // virtio-net header in place. We use a fixed Offset shared by the tunnel pump.
 package tundev
 
+import "golang.zx2c4.com/wireguard/tun"
+
 // Offset is the headroom (in bytes) reserved at the front of every TUN buffer.
 // The Linux backend needs at least virtioNetHdrLen (10) bytes; 16 matches the
 // value wireguard-go itself uses and leaves a little slack.
 const Offset = 16
+
+// ActualName returns the OS-assigned interface name (CreateTUN may pick a
+// different name than requested, e.g. when the requested one is taken).
+func ActualName(dev tun.Device) (string, error) {
+	return dev.Name()
+}
