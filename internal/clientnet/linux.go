@@ -1,10 +1,9 @@
 //go:build linux
 
-// Package clientnet provides the OS-specific client network configuration
-// (clientcore.Configurator). The Linux implementation is the debug/test client:
-// it sets up the inner IP, routes and DNS via iproute2 (reusing internal/tundev)
-// and treats the kill-switch as a no-op (the kill-switch is a Windows-phase
-// feature; the Linux client exists to exercise the data-plane end to end).
+// Linux Configurator: the debug/test client. It sets up the inner IP, routes and
+// DNS via iproute2 (reusing internal/tundev) and treats the kill-switch as a
+// no-op (the kill-switch is a Windows-phase feature; the Linux client exists to
+// exercise the data-plane end to end).
 package clientnet
 
 import (
