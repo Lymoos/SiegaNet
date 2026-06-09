@@ -60,11 +60,10 @@ func wfpErr(r uintptr) error {
 type wtFwpDataType uint
 
 const (
-	cFWP_UINT8        wtFwpDataType = 1
-	cFWP_UINT16       wtFwpDataType = 2
-	cFWP_UINT32       wtFwpDataType = 3
-	cFWP_UINT64       wtFwpDataType = 4
-	cFWP_V4_ADDR_MASK wtFwpDataType = 0x100 + 1 // FWP_SINGLE_DATA_TYPE_MAX+1
+	cFWP_UINT8  wtFwpDataType = 1
+	cFWP_UINT16 wtFwpDataType = 2
+	cFWP_UINT32 wtFwpDataType = 3
+	cFWP_UINT64 wtFwpDataType = 4
 )
 
 type wtFwpMatchType uint32
@@ -166,11 +165,6 @@ type wtFwpProvider0 struct {
 	flags        uint32
 	providerData wtFwpByteBlob
 	serviceName  *uint16
-}
-
-type wtFwpV4AddrAndMask struct {
-	addr uint32
-	mask uint32
 }
 
 // Compile-time ABI assertions against the reference's published sizes/offsets
@@ -316,7 +310,6 @@ func (e *wfpEngine) addSublayer() error {
 func (e *wfpEngine) addFilter(f fwFilter) (uint64, error) {
 	conds := make([]wtFwpmFilterCondition0, len(f.Conditions))
 	luids := make([]uint64, len(f.Conditions))
-	masks := make([]wtFwpV4AddrAndMask, len(f.Conditions))
 	for i, c := range f.Conditions {
 		cc := &conds[i]
 		cc.fieldKey = conditionFieldGUID(c.Field)
@@ -331,10 +324,14 @@ func (e *wfpEngine) addFilter(f fwFilter) (uint64, error) {
 			cc.conditionValue._type = cFWP_UINT64
 			cc.conditionValue.value = uintptr(unsafe.Pointer(&luids[i]))
 		case fieldRemoteAddr:
+			// A single /32 endpoint is FWP_UINT32 in host byte order, stored
+			// INLINE — NOT FWP_V4_ADDR_MASK (that is an addr+mask range passed by
+			// pointer; using it for an exact address is what the live WFP engine
+			// rejected with "FWP_VALUE ... is of the wrong type"). This mirrors
+			// wireguard-windows/tunnel/firewall's permit-by-address rule.
 			a := c.Addr.As4()
-			masks[i] = wtFwpV4AddrAndMask{addr: binary.BigEndian.Uint32(a[:]), mask: 0xffffffff}
-			cc.conditionValue._type = cFWP_V4_ADDR_MASK
-			cc.conditionValue.value = uintptr(unsafe.Pointer(&masks[i]))
+			cc.conditionValue._type = cFWP_UINT32
+			cc.conditionValue.value = uintptr(binary.BigEndian.Uint32(a[:]))
 		case fieldProtocol:
 			cc.conditionValue._type = cFWP_UINT8
 			cc.conditionValue.value = uintptr(c.Proto)
@@ -362,7 +359,6 @@ func (e *wfpEngine) addFilter(f fwFilter) (uint64, error) {
 	r, _, _ := procFwpmFilterAdd0.Call(e.handle, uintptr(unsafe.Pointer(&filter)), 0, uintptr(unsafe.Pointer(&id)))
 	runtime.KeepAlive(conds)
 	runtime.KeepAlive(luids)
-	runtime.KeepAlive(masks)
 	runtime.KeepAlive(name)
 	if err := wfpErr(r); err != nil {
 		return 0, fmt.Errorf("wfp filter add %q: %w", f.Name, err)

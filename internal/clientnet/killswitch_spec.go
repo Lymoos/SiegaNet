@@ -51,6 +51,43 @@ const (
 
 const protoUDP uint8 = 17
 
+// FWP_DATA_TYPE values (fwptypes.h) used for filter-condition values. These are
+// the live-WFP-critical part: pass the wrong FWP_DATA_TYPE for a condition and
+// FwpmFilterAdd0 rejects the filter with "FWP_VALUE ... is of the wrong type".
+// The mapping below is verified against wireguard-windows/tunnel/firewall and
+// pinned by a unit test here, so this class of bug is caught off-Windows.
+const (
+	fwpUint8  uint32 = 1
+	fwpUint16 uint32 = 2
+	fwpUint32 uint32 = 3
+	fwpUint64 uint32 = 4
+)
+
+// conditionFWPType returns the FWP_DATA_TYPE for a condition field and whether
+// the value is passed by pointer (true) or stored inline (false).
+//
+//   - a single remote IPv4 address is FWP_UINT32 (host byte order), INLINE — NOT
+//     FWP_V4_ADDR_MASK (that is for address+mask ranges; using it for an exact
+//     /32 is what the first Windows run rejected);
+//   - the interface LUID is FWP_UINT64 passed BY POINTER;
+//   - ports are FWP_UINT16, protocol FWP_UINT8, the loopback flag FWP_UINT32 —
+//     all inline.
+func conditionFWPType(f fwField) (dtype uint32, byPointer bool) {
+	switch f {
+	case fieldLoopback:
+		return fwpUint32, false
+	case fieldLocalInterface:
+		return fwpUint64, true
+	case fieldRemoteAddr:
+		return fwpUint32, false
+	case fieldProtocol:
+		return fwpUint8, false
+	case fieldLocalPort, fieldRemotePort:
+		return fwpUint16, false
+	}
+	return 0, false
+}
+
 // fwCondition is one match condition.
 type fwCondition struct {
 	Field fwField

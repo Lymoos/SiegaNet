@@ -22,7 +22,6 @@ import (
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
-	"golang.zx2c4.com/wintun"
 	"golang.zx2c4.com/wireguard/tun"
 
 	"github.com/lymoos/sieganet/internal/clientcore"
@@ -152,8 +151,7 @@ type Windows struct {
 	wfp       *wfpEngine
 }
 
-// New returns a Windows Configurator. tunName is the wintun adapter name, used by
-// Sweep to remove a stale adapter left by a crashed run.
+// New returns a Windows Configurator. tunName is the wintun adapter name.
 func New(tunName string) *Windows {
 	return &Windows{tunName: tunName, guid: guidString(tundev.AdapterGUID())}
 }
@@ -165,8 +163,13 @@ var _ clientcore.Configurator = (*Windows)(nil)
 // so it always targets exactly what a previous run created:
 //   - the NRPT catch-all rule (fixed registry key);
 //   - the smart-resolution policy values;
-//   - this interface's NameServer;
-//   - a stuck wintun adapter (fixed name + GUID).
+//   - this interface's NameServer.
+//
+// The wintun adapter itself is NOT swept here: tundev opens it with a FIXED name
+// and GUID and reuses an existing adapter of that identity in place, so a stale
+// one left by a crash is adopted rather than orphaned. (Opening it just to close
+// it also made the wintun DLL log a spurious "no matching adapter" line on a
+// fresh system, which read like an error but was not one.)
 //
 // Every step is best-effort: it does not fail if an item is absent (fresh system)
 // or only partially present (crash mid-setup). WFP filters need no sweeping — the
@@ -175,19 +178,6 @@ func (w *Windows) Sweep() {
 	removeNRPT()
 	removeDNSPolicy()
 	clearInterfaceDNS(w.guid)
-	removeStaleAdapter(w.tunName)
-}
-
-// removeStaleAdapter deletes a wintun adapter left by a crash. OpenAdapter finds
-// it by name (it was created with the fixed SiegaNet GUID); Close removes it.
-// Absent adapter => OpenAdapter errors => no-op.
-func removeStaleAdapter(name string) {
-	if name == "" {
-		return
-	}
-	if a, err := wintun.OpenAdapter(name); err == nil {
-		_ = a.Close()
-	}
 }
 
 // EngageKillSwitch installs the fail-closed WFP filter set (block-all + loopback

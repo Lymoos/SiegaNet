@@ -143,6 +143,31 @@ func TestEndpointAndTunnelPermits(t *testing.T) {
 
 // TestEndpointPermitSwappable: the isolated endpoint permit (for atomic failover)
 // matches the one in the full set.
+// TestConditionFWPTypes pins the FWP_DATA_TYPE per condition field. Getting any
+// of these wrong makes the live WFP engine reject the filter ("wrong type") —
+// exactly the first failure seen on real Windows (endpoint address was sent as
+// FWP_V4_ADDR_MASK instead of FWP_UINT32).
+func TestConditionFWPTypes(t *testing.T) {
+	cases := []struct {
+		field fwField
+		dtype uint32
+		byPtr bool
+	}{
+		{fieldRemoteAddr, fwpUint32, false}, // single IPv4 addr, INLINE host-order
+		{fieldLocalInterface, fwpUint64, true},
+		{fieldProtocol, fwpUint8, false},
+		{fieldLocalPort, fwpUint16, false},
+		{fieldRemotePort, fwpUint16, false},
+		{fieldLoopback, fwpUint32, false},
+	}
+	for _, c := range cases {
+		dt, bp := conditionFWPType(c.field)
+		if dt != c.dtype || bp != c.byPtr {
+			t.Errorf("conditionFWPType(%v) = (%d,%v), want (%d,%v)", c.field, dt, bp, c.dtype, c.byPtr)
+		}
+	}
+}
+
 func TestEndpointPermitSwappable(t *testing.T) {
 	ep, ok := endpointPermit(netip.MustParseAddr("203.0.113.7"))
 	if !ok {
