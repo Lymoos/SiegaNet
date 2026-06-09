@@ -28,7 +28,7 @@ from passive and active probing.
 |-------|-------|-------|
 | 0 | PoC tunnel (Linux ↔ Linux, no masking) | ✅ done |
 | 1 | Masking, decoy site, WebTransport, HMAC auth, server | ✅ done |
-| 2 | Windows client (wintun, routes, DNS, kill-switch) | ⏳ next |
+| 2 | Windows client (wintun, routes, DNS, kill-switch) | 🧪 code-complete; awaiting Windows verification ([checklist](docs/windows-verification.md)) |
 | 3 | Android client (gomobile, VpnService) | — |
 | 4 | Polish: reconnect, failover, obfusc, metrics, tray/UI | — |
 
