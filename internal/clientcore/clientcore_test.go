@@ -195,15 +195,17 @@ func (c *recordingConf) EngageKillSwitch(netip.Addr, string) error {
 }
 func (c *recordingConf) ConfigureTUN(tun.Device, TUNParams) error { c.record("configure"); return nil }
 func (c *recordingConf) Cleanup()                                 { c.record("cleanup") }
-func (c *recordingConf) has(e string) bool {
+func (c *recordingConf) has(e string) bool                        { return c.indexOf(e) >= 0 }
+
+func (c *recordingConf) indexOf(e string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, x := range c.events {
+	for i, x := range c.events {
 		if x == e {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 func TestSupervisorRunOrderAndCleanup(t *testing.T) {
@@ -213,7 +215,7 @@ func TestSupervisorRunOrderAndCleanup(t *testing.T) {
 		Configurator: conf,
 		KillSwitch:   true,
 		Params:       TUNParams{TUNName: "siega0", InnerIP: netip.MustParseAddr("10.7.0.2"), InnerMTU: 1280, EndpointAddr: netip.MustParseAddr("203.0.113.1"), EndpointPort: "443"},
-		OpenTUN:      func(string, int) (tun.Device, error) { return newSmokeTUN(), nil },
+		OpenTUN:      func(string, int) (tun.Device, error) { return newSmokeTUN(conf), nil },
 		MaxDatagram:  func(Session) int { return 1300 },
 		Dial: func(ctx context.Context) (Session, error) {
 			// First dial must happen only after sweep + killswitch.
@@ -244,22 +246,30 @@ func TestSupervisorRunOrderAndCleanup(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after cancel")
 	}
-	for _, e := range []string{"sweep", "killswitch", "configure", "cleanup"} {
+	for _, e := range []string{"sweep", "killswitch", "configure", "cleanup", "tun-close"} {
 		if !conf.has(e) {
 			t.Errorf("missing lifecycle event %q (events=%v)", e, conf.events)
 		}
 	}
+	// Teardown order: the network config (Cleanup: NRPT/DNS/WFP) must be undone
+	// BEFORE the adapter is closed, so the firewall lifts only after the tunnel
+	// is down — no leak window.
+	if conf.indexOf("cleanup") >= conf.indexOf("tun-close") {
+		t.Errorf("Cleanup must run before the adapter closes (events=%v)", conf.events)
+	}
 }
 
-// smokeTUN is a minimal tun.Device whose Read blocks until close.
+// smokeTUN is a minimal tun.Device whose Read blocks until close; it records its
+// Close into the recorder so teardown ordering can be asserted.
 type smokeTUN struct {
 	closed chan struct{}
 	once   sync.Once
 	events chan tun.Event
+	rec    *recordingConf
 }
 
-func newSmokeTUN() *smokeTUN {
-	return &smokeTUN{closed: make(chan struct{}), events: make(chan tun.Event)}
+func newSmokeTUN(rec *recordingConf) *smokeTUN {
+	return &smokeTUN{closed: make(chan struct{}), events: make(chan tun.Event), rec: rec}
 }
 func (s *smokeTUN) Read(_ [][]byte, _ []int, _ int) (int, error) { <-s.closed; return 0, os.ErrClosed }
 func (s *smokeTUN) Write(b [][]byte, _ int) (int, error)         { return len(b), nil }
@@ -268,6 +278,9 @@ func (s *smokeTUN) Name() (string, error)                        { return "siega
 func (s *smokeTUN) File() *os.File                               { return nil }
 func (s *smokeTUN) Events() <-chan tun.Event                     { return s.events }
 func (s *smokeTUN) BatchSize() int                               { return 1 }
-func (s *smokeTUN) Close() error                                 { s.once.Do(func() { close(s.closed) }); return nil }
+func (s *smokeTUN) Close() error {
+	s.once.Do(func() { s.rec.record("tun-close"); close(s.closed) })
+	return nil
+}
 
 var _ tunnel.Datagrammer = (*reconnectingSession)(nil)

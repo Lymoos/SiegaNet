@@ -24,8 +24,10 @@ type Linux struct {
 	dnsSet    bool
 }
 
-// New returns a Linux Configurator.
-func New() *Linux { return &Linux{} }
+// New returns a Linux Configurator. tunName is accepted for cross-platform
+// signature parity with the Windows constructor (the Linux debug client has no
+// adapter to sweep).
+func New(tunName string) *Linux { return &Linux{} }
 
 var _ clientcore.Configurator = (*Linux)(nil)
 

@@ -11,6 +11,11 @@
 // is re-dialed on a drop, hidden from tunnel.Run behind reconnectingSession, so
 // the data-plane never restarts and no leak window opens.
 //
+// Reuse: Options.Run is the single entry point for connect + reconnect + ordered
+// teardown. The CLI (cmd/sieganet-client) is a thin wrapper around it; the Phase 4
+// Windows service / tray will wrap the same Options.Run with a service-managed
+// context and need no rewrite of the connect/cleanup logic.
+//
 // Endpoint resolution policy (Phase 2): the caller resolves the server domain to
 // an IP ONCE, before the kill-switch is engaged, and passes that fixed address
 // in. Every reconnect — including after a network change — dials the cached IP;
@@ -97,11 +102,11 @@ func (o Options) Run(ctx context.Context) error {
 		}
 		o.logf("kill-switch engaged (only %s and the tunnel permitted)", o.Params.EndpointAddr)
 	}
-	defer conf.Cleanup()
 
 	// First connection (retry under the kill-switch until success or ctx done).
 	first, err := o.dialLoop(ctx)
 	if err != nil {
+		conf.Cleanup()
 		return err
 	}
 
@@ -109,14 +114,16 @@ func (o Options) Run(ctx context.Context) error {
 	dev, err := o.OpenTUN(o.Params.TUNName, o.Params.InnerMTU)
 	if err != nil {
 		_ = first.Close()
+		conf.Cleanup()
 		return err
 	}
-	defer dev.Close()
 
 	p := o.Params
 	p.InnerMTU = tunnel.InnerMTU(maxDg, o.TunnelConfig.PadMax, o.Params.InnerMTU)
 	if err := conf.ConfigureTUN(dev, p); err != nil {
 		_ = first.Close()
+		conf.Cleanup()
+		_ = dev.Close()
 		return err
 	}
 	o.logf("tunnel up: inner=%s mtu=%d full_tunnel=%t dns=%s", p.InnerIP, p.InnerMTU, p.FullTunnel, p.DNS)
@@ -125,12 +132,20 @@ func (o Options) Run(ctx context.Context) error {
 	// re-dials underneath it. TUN/routes/DNS/kill-switch stay put.
 	h := newReconnectingSession(first, o.Dial, o.logf)
 	go h.redialLoop(ctx)
-	defer h.close()
 
 	tc := o.TunnelConfig
 	tc.MaxDatagram = maxDg
 	tc.LocalTunIP = o.Params.InnerIP.AsSlice()
-	return tunnel.Run(ctx, dev, h, tc)
+	runErr := tunnel.Run(ctx, dev, h, tc)
+
+	// Ordered teardown (no leak): stop the pump, then undo the network config
+	// (the Configurator removes NRPT, restores DNS, then closes the WFP engine so
+	// the block lifts only after the tunnel is down), then close the adapter so
+	// its inner IP and routes go with it.
+	h.close()
+	conf.Cleanup()
+	_ = dev.Close()
+	return runErr
 }
 
 // dialLoop retries Dial with backoff until it succeeds or ctx is cancelled.

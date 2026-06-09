@@ -22,6 +22,7 @@ import (
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
+	"golang.zx2c4.com/wintun"
 	"golang.zx2c4.com/wireguard/tun"
 
 	"github.com/lymoos/sieganet/internal/clientcore"
@@ -141,6 +142,7 @@ const (
 
 // Windows configures the tunnel via the IP Helper API + registry + WFP.
 type Windows struct {
+	tunName   string
 	luid      uint64
 	guid      string
 	addrRow   *windows.MibUnicastIpAddressRow
@@ -150,19 +152,42 @@ type Windows struct {
 	wfp       *wfpEngine
 }
 
-// New returns a Windows Configurator.
-func New() *Windows { return &Windows{guid: guidString(tundev.AdapterGUID())} }
+// New returns a Windows Configurator. tunName is the wintun adapter name, used by
+// Sweep to remove a stale adapter left by a crashed run.
+func New(tunName string) *Windows {
+	return &Windows{tunName: tunName, guid: guidString(tundev.AdapterGUID())}
+}
 
 var _ clientcore.Configurator = (*Windows)(nil)
 
-// Sweep removes DNS/NRPT leftovers from a previously-crashed run (these live in
-// the registry and are NOT reaped when the adapter dies). Stale routes/IP on the
-// dead adapter are removed by Windows when the adapter is reaped; a stale
-// endpoint /32 on the physical link is benign.
+// Sweep is idempotent crash recovery, run at startup before anything else. It
+// removes leftovers a non-graceful exit may have stranded — all by FIXED markers,
+// so it always targets exactly what a previous run created:
+//   - the NRPT catch-all rule (fixed registry key);
+//   - the smart-resolution policy values;
+//   - this interface's NameServer;
+//   - a stuck wintun adapter (fixed name + GUID).
+//
+// Every step is best-effort: it does not fail if an item is absent (fresh system)
+// or only partially present (crash mid-setup). WFP filters need no sweeping — the
+// DYNAMIC session means the kernel already removed them when the old process died.
 func (w *Windows) Sweep() {
 	removeNRPT()
 	removeDNSPolicy()
 	clearInterfaceDNS(w.guid)
+	removeStaleAdapter(w.tunName)
+}
+
+// removeStaleAdapter deletes a wintun adapter left by a crash. OpenAdapter finds
+// it by name (it was created with the fixed SiegaNet GUID); Close removes it.
+// Absent adapter => OpenAdapter errors => no-op.
+func removeStaleAdapter(name string) {
+	if name == "" {
+		return
+	}
+	if a, err := wintun.OpenAdapter(name); err == nil {
+		_ = a.Close()
+	}
 }
 
 // EngageKillSwitch installs the fail-closed WFP filter set (block-all + loopback
@@ -406,18 +431,28 @@ func guidString(g windows.GUID) string {
 
 // Cleanup tears down DNS, then the routes and inner IP (the latter also go with
 // the adapter, but we delete them for tidiness).
+// Cleanup undoes the network configuration in the leak-safe order required by
+// the supervisor: DNS first (remove the NRPT rule + policy, release the interface
+// DNS), THEN lift the WFP kill-switch (so the firewall drops only after the
+// tunnel is being torn down), THEN delete the routes/IP. The adapter itself is
+// closed by the supervisor right after this returns, which also reaps anything
+// still bound to it.
 func (w *Windows) Cleanup() {
-	// Lift the kill-switch first so connectivity returns, then undo DNS/routes.
-	if w.wfp != nil {
-		w.wfp.close()
-		w.wfp = nil
-	}
+	// 1. DNS.
 	if w.dnsOn {
 		removeNRPT()
 		removeDNSPolicy()
 		clearInterfaceDNS(w.guid)
 		w.dnsOn = false
 	}
+	// 2. Kill-switch engine (DYNAMIC session removes the filters).
+	if w.wfp != nil {
+		w.wfp.close()
+		w.wfp = nil
+	}
+	// 3. Routes / inner IP. The endpoint /32 sits on the PHYSICAL interface, so it
+	// must be deleted explicitly; the rest go with the adapter too, deleted here
+	// for tidiness.
 	if w.epRoute != nil {
 		procDeleteIpForwardEntry2.Call(uintptr(unsafe.Pointer(w.epRoute)))
 		w.epRoute = nil
