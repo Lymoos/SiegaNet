@@ -139,7 +139,7 @@ const (
 
 // ---- Configurator ----
 
-// Windows configures the tunnel via the IP Helper API + registry.
+// Windows configures the tunnel via the IP Helper API + registry + WFP.
 type Windows struct {
 	luid      uint64
 	guid      string
@@ -147,6 +147,7 @@ type Windows struct {
 	epRoute   *mibIpforwardRow2
 	tunRoutes []*mibIpforwardRow2
 	dnsOn     bool
+	wfp       *wfpEngine
 }
 
 // New returns a Windows Configurator.
@@ -164,8 +165,19 @@ func (w *Windows) Sweep() {
 	clearInterfaceDNS(w.guid)
 }
 
-// EngageKillSwitch is added in step 5.
-func (w *Windows) EngageKillSwitch(netip.Addr, string) error { return nil }
+// EngageKillSwitch installs the fail-closed WFP filter set (block-all + loopback
+// + narrow DHCP + the endpoint /32) in one transaction BEFORE the first dial. It
+// stays up for the whole session; the tunnel-interface permit is added later by
+// ConfigureTUN once the adapter exists. A DYNAMIC session auto-removes the
+// filters if the process dies (fail-open on crash).
+func (w *Windows) EngageKillSwitch(endpoint netip.Addr, _ string) error {
+	e, err := engageWFP(endpoint)
+	if err != nil {
+		return err
+	}
+	w.wfp = e
+	return nil
+}
 
 // ConfigureTUN assigns the inner IP and MTU, installs routes in anti-loop order,
 // then points DNS at the tunnel resolver.
@@ -196,6 +208,13 @@ func (w *Windows) ConfigureTUN(dev tun.Device, p clientcore.TUNParams) error {
 	if p.SetDNS && p.DNS != "" {
 		if err := w.applyDNS(p.DNS); err != nil {
 			return fmt.Errorf("dns: %w", err)
+		}
+	}
+	// Now that the adapter exists, permit traffic on the tunnel LUID (the base
+	// kill-switch installed at engage time had no tunnel permit yet).
+	if w.wfp != nil {
+		if err := w.wfp.permitTunnel(luid); err != nil {
+			return fmt.Errorf("kill-switch tunnel permit: %w", err)
 		}
 	}
 	return nil
@@ -388,6 +407,11 @@ func guidString(g windows.GUID) string {
 // Cleanup tears down DNS, then the routes and inner IP (the latter also go with
 // the adapter, but we delete them for tidiness).
 func (w *Windows) Cleanup() {
+	// Lift the kill-switch first so connectivity returns, then undo DNS/routes.
+	if w.wfp != nil {
+		w.wfp.close()
+		w.wfp = nil
+	}
 	if w.dnsOn {
 		removeNRPT()
 		removeDNSPolicy()
