@@ -24,10 +24,10 @@ type Linux struct {
 	dnsSet    bool
 }
 
-// New returns a Linux Configurator. tunName is accepted for cross-platform
-// signature parity with the Windows constructor (the Linux debug client has no
-// adapter to sweep).
-func New(tunName string) *Linux { return &Linux{} }
+// New returns a Linux Configurator. tunName and endpoint are accepted for
+// cross-platform signature parity with the Windows constructor (the Linux debug
+// client has no adapter to sweep and ties its routes to the TUN device).
+func New(tunName string, endpoint netip.Addr) *Linux { return &Linux{} }
 
 var _ clientcore.Configurator = (*Linux)(nil)
 

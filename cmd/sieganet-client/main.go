@@ -114,7 +114,7 @@ func main() {
 
 	stats := &tunnel.Stats{}
 	opt := clientcore.Options{
-		Configurator: clientnet.New(*tunName),
+		Configurator: clientnet.New(*tunName, endpointAddr),
 		KillSwitch:   cfg.KillSwitch,
 		OpenTUN:      tundev.Open,
 		Dial:         dial,

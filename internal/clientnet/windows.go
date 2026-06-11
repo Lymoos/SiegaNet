@@ -142,6 +142,7 @@ const (
 // Windows configures the tunnel via the IP Helper API + registry + WFP.
 type Windows struct {
 	tunName   string
+	endpoint  netip.Addr // server IP, for the off-tunnel /32 exclusion route
 	luid      uint64
 	guid      string
 	addrRow   *windows.MibUnicastIpAddressRow
@@ -151,9 +152,11 @@ type Windows struct {
 	wfp       *wfpEngine
 }
 
-// New returns a Windows Configurator. tunName is the wintun adapter name.
-func New(tunName string) *Windows {
-	return &Windows{tunName: tunName, guid: guidString(tundev.AdapterGUID())}
+// New returns a Windows Configurator. tunName is the wintun adapter name;
+// endpoint is the already-resolved server IP whose off-tunnel /32 route Sweep
+// reclaims after a crash and Cleanup removes on exit.
+func New(tunName string, endpoint netip.Addr) *Windows {
+	return &Windows{tunName: tunName, endpoint: endpoint, guid: guidString(tundev.AdapterGUID())}
 }
 
 var _ clientcore.Configurator = (*Windows)(nil)
@@ -163,7 +166,13 @@ var _ clientcore.Configurator = (*Windows)(nil)
 // so it always targets exactly what a previous run created:
 //   - the NRPT catch-all rule (fixed registry key);
 //   - the smart-resolution policy values;
-//   - this interface's NameServer.
+//   - this interface's NameServer;
+//   - the off-tunnel endpoint /32 host route. Unlike the inner IP and the
+//     0/1+128/1 tunnel routes (which the kernel drops with the adapter), this
+//     route lives on the PHYSICAL interface and outlives a crashed adapter, so a
+//     non-graceful exit leaves it behind and the next CreateIpForwardEntry2 would
+//     fail ERROR_OBJECT_ALREADY_EXISTS. Deleting it here (and adopting it in
+//     addEndpointRoute) makes restart idempotent.
 //
 // The wintun adapter itself is NOT swept here: tundev opens it with a FIXED name
 // and GUID and reuses an existing adapter of that identity in place, so a stale
@@ -178,6 +187,28 @@ func (w *Windows) Sweep() {
 	removeNRPT()
 	removeDNSPolicy()
 	clearInterfaceDNS(w.guid)
+	deleteEndpointRoute(w.endpoint)
+}
+
+// deleteEndpointRoute best-effort removes the off-tunnel /32 host route to the
+// endpoint. It reconstructs the row the same way addEndpointRoute built it (the
+// physical interface + gateway for that destination) so DeleteIpForwardEntry2
+// matches the stranded entry. A missing route (ERROR_NOT_FOUND) or no path to
+// the endpoint is a no-op — this runs on a fresh system too.
+func deleteEndpointRoute(endpoint netip.Addr) {
+	if !endpoint.IsValid() {
+		return
+	}
+	luid, nextHop, err := bestPhysicalRoute(endpoint)
+	if err != nil {
+		return
+	}
+	row := newRoute()
+	row.InterfaceLuid = luid
+	row.DestinationPrefix.RawPrefix.setAddr(endpoint)
+	row.DestinationPrefix.PrefixLength = uint8(endpoint.BitLen())
+	row.NextHop.setAddr(nextHop)
+	procDeleteIpForwardEntry2.Call(uintptr(unsafe.Pointer(row)))
 }
 
 // EngageKillSwitch installs the fail-closed WFP filter set (block-all + loopback
@@ -283,9 +314,12 @@ func (w *Windows) addEndpointRoute(endpoint netip.Addr) error {
 	row.DestinationPrefix.RawPrefix.setAddr(endpoint)
 	row.DestinationPrefix.PrefixLength = uint8(endpoint.BitLen())
 	row.NextHop.setAddr(nextHop)
-	if err := createRoute(row); err != nil {
+	if err := createRoute(row); err != nil && err != windows.ERROR_OBJECT_ALREADY_EXISTS {
 		return err
 	}
+	// On ERROR_OBJECT_ALREADY_EXISTS the route is a survivor of a crashed run with
+	// the same physical path: adopt it (same row identity) so this run owns it and
+	// Cleanup deletes it. Sweep normally clears it first, so this is the backstop.
 	w.epRoute = row
 	return nil
 }
