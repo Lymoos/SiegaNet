@@ -9,6 +9,7 @@ import {
 import worldTopo from "world-atlas/countries-110m.json";
 import type { Server, Status } from "../api/types";
 import { coordsFor } from "../geo/serverGeo";
+import { isoFor, loadColor } from "../lib/flags";
 import { ServerCard } from "./ServerCard";
 
 interface Props {
@@ -22,8 +23,12 @@ interface Props {
 
 /**
  * Real world map (Natural Earth 110m via world-atlas topojson, rendered by
- * react-simple-maps) styled to the SiegaNet dark theme. Server dots are
- * clickable; a click opens the server card anchored near the dot.
+ * react-simple-maps) styled to the SiegaNet dark theme.
+ *
+ * Server pins: dark disc with the ISO country code inside; the ring colour
+ * encodes load_pct (green = free → orange → red = loaded), so relative
+ * server pressure reads at a glance. Click opens the server card anchored
+ * near the pin; the card dismisses on outside click and Escape.
  */
 export function WorldMap({
   servers,
@@ -44,14 +49,27 @@ export function WorldMap({
     if (!selectedId) setAnchor(null);
   }, [selectedId]);
 
+  // Escape closes the card
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onSelect(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId, onSelect]);
+
   const markerClick = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // don't let the outside-click handler swallow it
     const rect = wrapRef.current?.getBoundingClientRect();
     if (rect) setAnchor({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     onSelect(id);
   };
 
   return (
-    <div className="map-wrap" ref={wrapRef}>
+    /* any click that reaches the container is "outside": map background,
+       countries, ocean — the card and the pins stop propagation */
+    <div className="map-wrap" ref={wrapRef} onClick={() => onSelect(null)}>
       <ComposableMap
         projection="geoNaturalEarth1"
         projectionConfig={{ scale: 172, center: [12, 8] }}
@@ -80,27 +98,44 @@ export function WorldMap({
                 : isActive && status.state === "connecting"
                   ? "connecting"
                   : "";
+            const isSelected = selectedId === s.id;
             return (
               <Marker
                 key={s.id}
                 coordinates={coords}
-                className={`marker ${markerState}`}
+                className={`marker ${markerState} ${isSelected ? "is-selected" : ""}`}
                 onClick={(e: React.MouseEvent) => markerClick(s.id, e)}
               >
-                <circle className="marker-halo" r={5} />
+                {/* pulse ring for connected/connecting */}
+                <circle className="marker-halo" r={8} />
+                {/* selection glow behind the pin */}
+                {isSelected && <circle className="pin-glow" r={11.5} />}
+                {/* pin: dark disc, ring colour = load */}
                 <circle
-                  className="marker-dot"
-                  r={selectedId === s.id ? 5 : 3.6}
-                >
-                  <title>{`${s.country}, ${s.city} — ${s.ping_ms} ms`}</title>
-                </circle>
+                  className="pin-body"
+                  r={isSelected ? 8.5 : 7}
+                  style={{ stroke: loadColor(s.load_pct) }}
+                />
+                <text className="pin-label" dy="2.1">
+                  {isoFor(s.country)}
+                </text>
+                <title>{`${s.country}, ${s.city} — ${s.ping_ms} ms · нагрузка ${s.load_pct}%`}</title>
               </Marker>
             );
           })}
         </ZoomableGroup>
       </ComposableMap>
 
-      <div className="map-hint">колесо — масштаб · перетаскивание — сдвиг · клик по точке — сервер</div>
+      <div className="map-legend">
+        <span className="legend-title">нагрузка</span>
+        <span className="legend-swatch" style={{ background: loadColor(15) }} />
+        <span>низкая</span>
+        <span className="legend-swatch" style={{ background: loadColor(55) }} />
+        <span>средняя</span>
+        <span className="legend-swatch" style={{ background: loadColor(90) }} />
+        <span>высокая</span>
+      </div>
+      <div className="map-hint">колесо — масштаб · перетаскивание — сдвиг · клик по пину — сервер</div>
 
       {selected && (
         <ServerCard

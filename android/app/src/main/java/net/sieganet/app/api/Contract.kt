@@ -6,8 +6,9 @@ import org.json.JSONObject
  * The same control contract as the desktop client (see desktop/src/api/types.ts
  * and the core control API):
  *
- *   GET  /status  -> { state, server_id, inner_ip, since_unix, up_bytes, down_bytes }
- *   GET  /servers -> [ { id, country, city, host, ping_ms, load_pct } ]
+ *   GET  /status   -> { state, server_id, inner_ip, since_unix, up_bytes, down_bytes }
+ *   GET  /servers  -> [ { id, country, city, host, ping_ms, load_pct } ]
+ *   POST /activate { key } -> { ok, valid_until }   (see activation/ActivationStore)
  *
  * On Android the transport differs — the core is linked in as a gomobile
  * module instead of a localhost HTTP server — but the shapes are identical:

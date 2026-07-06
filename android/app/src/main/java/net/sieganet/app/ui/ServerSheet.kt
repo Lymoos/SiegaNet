@@ -13,7 +13,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -38,8 +40,19 @@ fun ServerSheet(
     onPick: (Server) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // skipPartiallyExpanded: one anchor instead of two — the sheet opens in
+    // a single settle animation, noticeably faster on slow emulators
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // sort once per server-list change, not on every recomposition; flags are
+    // precomputed alongside so rows do zero string work while scrolling
+    val rows = remember(servers) {
+        servers.sortedBy { it.pingMs }.map { it to flagFor(it.country) }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = Panel,
     ) {
         Text(
@@ -51,7 +64,7 @@ fun ServerSheet(
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
         )
         LazyColumn(modifier = Modifier.padding(bottom = 24.dp)) {
-            items(servers.sortedBy { it.pingMs }, key = { it.id }) { s ->
+            items(rows, key = { it.first.id }) { (s, flag) ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -59,7 +72,7 @@ fun ServerSheet(
                         .padding(horizontal = 24.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(flagFor(s.country), fontSize = 22.sp)
+                    Text(flag, fontSize = 22.sp)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(

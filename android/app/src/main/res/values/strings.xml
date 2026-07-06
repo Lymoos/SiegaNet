@@ -8,6 +8,5 @@
     <string name="action_disconnect">Отключить</string>
     <string name="action_cancel">Отмена</string>
     <string name="notif_channel_vpn">Состояние VPN</string>
-    <string name="import_ok">Конфиг импортирован</string>
-    <string name="import_bad">Не удалось разобрать конфиг</string>
+    <string name="state_needs_activation">Требуется активация</string>
 </resources>

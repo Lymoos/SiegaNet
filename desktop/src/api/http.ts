@@ -1,4 +1,4 @@
-import type { ControlApi, Ok, Server, Status } from "./types";
+import type { ActivationResult, ControlApi, Ok, Server, Status } from "./types";
 
 /**
  * HTTP client for the real core control API on 127.0.0.1.
@@ -50,5 +50,12 @@ export class HttpControlApi implements ControlApi {
 
   disconnect(): Promise<Ok> {
     return this.request<Ok>("/disconnect", { method: "POST" });
+  }
+
+  activate(key: string): Promise<ActivationResult> {
+    return this.request<ActivationResult>("/activate", {
+      method: "POST",
+      body: JSON.stringify({ key }),
+    });
   }
 }

@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,11 +68,11 @@ import net.sieganet.app.ui.theme.TextMuted
 fun ConnectScreen(
     status: Status,
     selected: Server?,
-    configSummary: String?,
+    /** «подписка до …» line under the state label */
+    subscriptionNote: String?,
     onConnectClick: () -> Unit,
     onDisconnectClick: () -> Unit,
     onServerClick: () -> Unit,
-    onScanClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -94,14 +93,6 @@ fun ConnectScreen(
                 fontSize = 20.sp,
                 color = TextMain,
             )
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = onScanClick) {
-                Icon(
-                    painterResource(R.drawable.ic_qr),
-                    contentDescription = "Импорт конфига по QR",
-                    tint = TextMuted,
-                )
-            }
         }
 
         Spacer(Modifier.height(28.dp))
@@ -121,7 +112,7 @@ fun ConnectScreen(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            configSummary ?: "Импортируйте конфиг по QR или ссылке sieganet://",
+            subscriptionNote ?: "",
             fontFamily = Inter,
             fontSize = 12.sp,
             color = TextMuted,

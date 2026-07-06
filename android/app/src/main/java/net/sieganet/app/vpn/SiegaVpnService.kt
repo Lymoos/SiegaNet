@@ -18,10 +18,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.sieganet.app.MainActivity
 import net.sieganet.app.R
+import net.sieganet.app.activation.ActivationStore
 import net.sieganet.app.api.MockServers
 import net.sieganet.app.api.Status
 import net.sieganet.app.api.VpnState
-import net.sieganet.app.config.ConfigStore
 import net.sieganet.app.core.CoreRegistry
 import org.json.JSONObject
 
@@ -80,6 +80,13 @@ class SiegaVpnService : VpnService() {
     }
 
     private fun connect(serverId: String) {
+        // subscription gate, second line of defence (the UI already blocks)
+        if (!ActivationStore.isActivated(this)) {
+            ConnectionRepository.push(Status())
+            stopSelfCleanly()
+            return
+        }
+
         // one active tunnel at a time; switching server re-establishes
         teardownTunnel()
 
@@ -107,9 +114,12 @@ class SiegaVpnService : VpnService() {
         }
         tun = pfd
 
-        // config for the core: imported peer config + chosen server.
-        // detachFd(): the core owns the fd from here until stop().
-        val config = JSONObject(ConfigStore.asCoreConfigJson(this))
+        // config for the core: chosen server + the activation key (the
+        // backend resolves the key to peer credentials — subscription model,
+        // no per-device config files). detachFd(): the core owns the fd from
+        // here until stop().
+        val config = JSONObject()
+            .put("activation_key", ActivationStore.load(this)?.key ?: "")
             .put("server_id", serverId)
             .put("server_host", server?.host ?: JSONObject.NULL)
             .toString()

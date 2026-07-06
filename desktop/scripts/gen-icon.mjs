@@ -12,10 +12,11 @@ import { writeFileSync } from "node:fs";
 const S = 1024;
 const px = new Uint8Array(S * S * 4);
 
-// theme tokens (design/tokens.json)
+// theme tokens (design/tokens.json) — deliberately dark: the glyph sits in
+// the deep-violet range, no light ring, glow barely-there
 const BG = [0x0b, 0x09, 0x10];
-const ACCENT = [0x8b, 0x5c, 0xf6];
-const LIGHT = [0xa7, 0x8b, 0xfa];
+const GLOW = [0x5b, 0x21, 0xb6]; // accentDeep
+const GLYPH = [0x71, 0x40, 0xd4]; // between accentDeep and accent
 
 const cx = S / 2;
 const cy = S / 2;
@@ -64,18 +65,17 @@ for (let y = 0; y < S; y++) {
     if (bgA <= 0) continue; // fully transparent corner
 
     const r = Math.hypot(x - cx, y - cy);
-    // radial glow behind the glyph
-    const glow = Math.exp(-((r / (S * 0.34)) ** 2)) * 0.55;
-    let cr = BG[0] + (ACCENT[0] - BG[0]) * glow;
-    let cg = BG[1] + (ACCENT[1] - BG[1]) * glow;
-    let cb = BG[2] + (ACCENT[2] - BG[2]) * glow;
+    // faint radial tint behind the glyph (was a bright glow; now muted)
+    const glow = Math.exp(-((r / (S * 0.34)) ** 2)) * 0.16;
+    let cr = BG[0] + (GLOW[0] - BG[0]) * glow;
+    let cg = BG[1] + (GLOW[1] - BG[1]) * glow;
+    let cb = BG[2] + (GLOW[2] - BG[2]) * glow;
 
     const g = glyphAlpha(x, y);
     if (g > 0) {
-      // blend towards the light accent for the glyph itself
-      cr = cr + (LIGHT[0] - cr) * g;
-      cg = cg + (LIGHT[1] - cg) * g;
-      cb = cb + (LIGHT[2] - cb) * g;
+      cr = cr + (GLYPH[0] - cr) * g;
+      cg = cg + (GLYPH[1] - cg) * g;
+      cb = cb + (GLYPH[2] - cb) * g;
     }
 
     px[i] = Math.round(cr);

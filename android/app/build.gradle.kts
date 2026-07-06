@@ -53,10 +53,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    // QR import of peer configs (sieganet:// payload in a QR code)
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
-
-    // imported peer config at rest (encrypted prefs)
+    // activation key cache at rest (encrypted prefs)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // --- gomobile core (late integration step) -----------------------------

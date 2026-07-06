@@ -4,8 +4,19 @@ import { StatusBar } from "./components/StatusBar";
 import { Sidebar } from "./components/Sidebar";
 import { WorldMap } from "./components/WorldMap";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { ActivationScreen } from "./components/ActivationScreen";
+import { isActivated } from "./state/activation";
 
 export default function App() {
+  const [activated, setActivated] = useState(isActivated);
+
+  if (!activated) {
+    return <ActivationScreen onActivated={() => setActivated(true)} />;
+  }
+  return <MainApp />;
+}
+
+function MainApp() {
   const vpn = useVpn();
   const [settingsOpen, setSettingsOpen] = useState(false);
 

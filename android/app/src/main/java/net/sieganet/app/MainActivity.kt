@@ -1,10 +1,8 @@
 package net.sieganet.app
 
-import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,13 +13,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
+import net.sieganet.app.ui.ActivationScreen
 import net.sieganet.app.ui.ConnectScreen
 import net.sieganet.app.ui.ServerSheet
 import net.sieganet.app.ui.theme.SiegaNetTheme
 import net.sieganet.app.vm.VpnViewModel
 import net.sieganet.app.vpn.SiegaVpnService
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
@@ -39,18 +39,6 @@ class MainActivity : ComponentActivity() {
         pendingServerId = null
     }
 
-    private val qrScan = registerForActivityResult(ScanContract()) { result ->
-        result.contents?.let { payload ->
-            val summary = vm.importConfig(payload)
-            Toast.makeText(
-                this,
-                if (summary != null) "${getString(R.string.import_ok)}: $summary"
-                else getString(R.string.import_bad),
-                Toast.LENGTH_LONG,
-            ).show()
-        }
-    }
-
     private val notifPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { /* notification is nice-to-have; VPN works either way */ }
@@ -58,27 +46,41 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        handleDeepLink(intent)
         if (Build.VERSION.SDK_INT >= 33) {
             notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
 
         setContent {
             SiegaNetTheme {
+                val activated by vm.activated.collectAsState()
+
+                if (!activated) {
+                    // subscription gate: no valid key — no VPN
+                    val busy by vm.activationBusy.collectAsState()
+                    val error by vm.activationError.collectAsState()
+                    ActivationScreen(
+                        busy = busy,
+                        error = error,
+                        onActivate = vm::activate,
+                    )
+                    return@SiegaNetTheme
+                }
+
                 val status by vm.status.collectAsState()
                 val servers by vm.servers.collectAsState()
                 val selected by vm.selected.collectAsState()
-                val configSummary by vm.configSummary.collectAsState()
                 var sheetOpen by remember { mutableStateOf(false) }
 
                 ConnectScreen(
                     status = status,
                     selected = selected,
-                    configSummary = configSummary,
+                    subscriptionNote = vm.validUntil?.let {
+                        "подписка до " + SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+                            .format(Date(it * 1000))
+                    },
                     onConnectClick = { selected?.let { connect(it.id) } },
                     onDisconnectClick = ::disconnect,
                     onServerClick = { sheetOpen = true },
-                    onScanClick = ::scanQr,
                 )
 
                 if (sheetOpen) {
@@ -94,11 +96,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleDeepLink(intent)
     }
 
     // ---- actions -------------------------------------------------------------
@@ -125,28 +122,5 @@ class MainActivity : ComponentActivity() {
             this,
             SiegaVpnService.disconnectIntent(this),
         )
-    }
-
-    private fun scanQr() {
-        qrScan.launch(
-            ScanOptions()
-                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                .setPrompt("Наведите на QR-код конфига SiegaNet")
-                .setBeepEnabled(false)
-                .setOrientationLocked(true),
-        )
-    }
-
-    private fun handleDeepLink(intent: Intent?) {
-        val uri = intent?.data ?: return
-        if (uri.scheme.equals("sieganet", ignoreCase = true)) {
-            val summary = vm.importConfig(uri.toString())
-            Toast.makeText(
-                this,
-                if (summary != null) "${getString(R.string.import_ok)}: $summary"
-                else getString(R.string.import_bad),
-                Toast.LENGTH_LONG,
-            ).show()
-        }
     }
 }

@@ -40,7 +40,8 @@ export function ServerCard({
   }
 
   return (
-    <div className="server-card" style={style}>
+    /* clicks inside the card must not reach the map's outside-click handler */
+    <div className="server-card" style={style} onClick={(e) => e.stopPropagation()}>
       <button className="close" onClick={onClose} title="Закрыть">
         <svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.6">
           <path d="M1 1l10 10M11 1L1 11" />
