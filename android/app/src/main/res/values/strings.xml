@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SiegaNet</string>
+    <string name="state_disconnected">Не подключено</string>
+    <string name="state_connecting">Подключение…</string>
+    <string name="state_connected">Защищено</string>
+    <string name="action_connect">Подключиться</string>
+    <string name="action_disconnect">Отключить</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="notif_channel_vpn">Состояние VPN</string>
+    <string name="import_ok">Конфиг импортирован</string>
+    <string name="import_bad">Не удалось разобрать конфиг</string>
+</resources>

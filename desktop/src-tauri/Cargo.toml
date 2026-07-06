@@ -1,0 +1,25 @@
+[package]
+name = "sieganet-desktop"
+version = "0.1.0"
+description = "SiegaNet desktop client (UI shell over the Go core)"
+edition = "2021"
+
+# Linux builds need webkit2gtk-4.1 + gtk3 dev packages, see ../README.md.
+
+[lib]
+name = "sieganet_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
