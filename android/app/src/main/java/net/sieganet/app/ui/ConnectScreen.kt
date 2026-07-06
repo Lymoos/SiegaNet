@@ -1,5 +1,6 @@
 package net.sieganet.app.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -34,8 +35,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -209,32 +213,51 @@ fun ConnectScreen(
     }
 }
 
+/** diameter of the inner clickable circle */
+private val BUTTON_SIZE = 172.dp
+/** gap between the button's border and the connecting arc */
+private val ARC_GAP = 7.dp
+private val ARC_STROKE = 3.dp
+
 @Composable
 private fun PowerButton(state: VpnState, onClick: () -> Unit) {
-    val pulse = rememberInfiniteTransition(label = "pulse")
-    val phase by pulse.animateFloat(
+    val anim = rememberInfiniteTransition(label = "power")
+
+    // connecting: a thin violet arc wraps around the ring — the head circles
+    // steadily while the sweep breathes, so the handshake reads as motion
+    // along the ring instead of the old expanding pulse
+    val arcRotation by anim.animateFloat(
         initialValue = 0f,
-        targetValue = 1f,
+        targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
+            animation = tween(1500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
-        label = "phase",
+        label = "arcRotation",
+    )
+    val arcSweep by anim.animateFloat(
+        initialValue = 40f,
+        targetValue = 290f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "arcSweep",
     )
 
     val glowColor = when (state) {
         VpnState.CONNECTED -> Ok
         else -> Accent
     }
-    // connecting: expanding pulse ring; connected: steady strong glow;
-    // disconnected: quiet glow
+    // connected: steady strong glow; connecting/disconnected: quiet glow
+    // (while connecting the arc is the signal, the glow stays calm)
     val glowAlpha = when (state) {
-        VpnState.CONNECTING -> 0.55f * (1f - phase)
+        VpnState.CONNECTING -> 0.32f
         VpnState.CONNECTED -> 0.45f
         VpnState.DISCONNECTED -> 0.30f
     }
     val glowScale = when (state) {
-        VpnState.CONNECTING -> 0.75f + 0.45f * phase
+        VpnState.CONNECTING -> 0.95f
         VpnState.CONNECTED -> 1.0f
         VpnState.DISCONNECTED -> 0.9f
     }
@@ -255,12 +278,27 @@ private fun PowerButton(state: VpnState, onClick: () -> Unit) {
                     ),
                     radius = size.minDimension / 2 * glowScale * 1.15f,
                 )
+                if (state == VpnState.CONNECTING) {
+                    val arcRadius = BUTTON_SIZE.toPx() / 2 + ARC_GAP.toPx()
+                    drawArc(
+                        color = AccentLight,
+                        startAngle = arcRotation - 90f,
+                        sweepAngle = arcSweep,
+                        useCenter = false,
+                        topLeft = Offset(
+                            size.width / 2 - arcRadius,
+                            size.height / 2 - arcRadius,
+                        ),
+                        size = Size(arcRadius * 2, arcRadius * 2),
+                        style = Stroke(ARC_STROKE.toPx(), cap = StrokeCap.Round),
+                    )
+                }
             },
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
-                .size(172.dp)
+                .size(BUTTON_SIZE)
                 .background(
                     Brush.linearGradient(listOf(Panel, Bg)),
                     CircleShape,

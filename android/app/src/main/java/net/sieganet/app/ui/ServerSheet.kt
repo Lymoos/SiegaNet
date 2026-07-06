@@ -1,15 +1,20 @@
 package net.sieganet.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -18,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,7 +37,13 @@ import net.sieganet.app.ui.theme.Panel
 import net.sieganet.app.ui.theme.TextMain
 import net.sieganet.app.ui.theme.TextMuted
 
-/** Bottom sheet with the server list: страна, город, пинг — one tap selects. */
+private data class SheetRow(val server: Server, val flag: String, val ring: Color)
+
+/**
+ * Bottom sheet with the server list: страна, город, пинг — one tap selects.
+ * The ring around each flag encodes server load with the same green→orange→
+ * red ramp as the desktop map pins (see [loadColor]).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServerSheet(
@@ -44,10 +56,11 @@ fun ServerSheet(
     // a single settle animation, noticeably faster on slow emulators
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // sort once per server-list change, not on every recomposition; flags are
-    // precomputed alongside so rows do zero string work while scrolling
+    // sort once per server-list change, not on every recomposition; flags and
+    // ring colours are precomputed so rows do zero work while scrolling
     val rows = remember(servers) {
-        servers.sortedBy { it.pingMs }.map { it to flagFor(it.country) }
+        servers.sortedBy { it.pingMs }
+            .map { SheetRow(it, flagFor(it.country), loadColor(it.loadPct)) }
     }
 
     ModalBottomSheet(
@@ -55,24 +68,40 @@ fun ServerSheet(
         sheetState = sheetState,
         containerColor = Panel,
     ) {
-        Text(
-            "Серверы",
-            fontFamily = Mono,
-            fontSize = 12.sp,
-            letterSpacing = 2.sp,
-            color = TextMuted,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Серверы",
+                fontFamily = Mono,
+                fontSize = 12.sp,
+                letterSpacing = 2.sp,
+                color = TextMuted,
+            )
+            Spacer(Modifier.weight(1f))
+            LoadLegend()
+        }
         LazyColumn(modifier = Modifier.padding(bottom = 24.dp)) {
-            items(rows, key = { it.first.id }) { (s, flag) ->
+            items(rows, key = { it.server.id }) { (s, flag, ring) ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onPick(s) }
-                        .padding(horizontal = 24.dp, vertical = 13.dp),
+                        .padding(horizontal = 24.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(flag, fontSize = 22.sp)
+                    // flag in a ring: ring colour = load (as on the desktop map)
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .border(2.dp, ring, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(flag, fontSize = 20.sp)
+                    }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -106,6 +135,28 @@ fun ServerSheet(
                 }
             }
             item { Spacer(Modifier.height(8.dp)) }
+        }
+    }
+}
+
+/** «нагрузка ● ● ●» — decodes the flag rings, mirrors the desktop map legend */
+@Composable
+private fun LoadLegend() {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "нагрузка",
+            fontFamily = Mono,
+            fontSize = 10.sp,
+            letterSpacing = 1.sp,
+            color = TextMuted.copy(alpha = 0.8f),
+        )
+        for (pct in listOf(15, 55, 90)) {
+            Spacer(Modifier.width(6.dp))
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .background(loadColor(pct), CircleShape),
+            )
         }
     }
 }
