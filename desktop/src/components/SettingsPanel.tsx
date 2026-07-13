@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { resetControlApi } from "../api";
-import { clearActivation, loadActivation } from "../state/activation";
 import {
   loadSettings,
   saveSettings,
@@ -157,33 +156,6 @@ export function SettingsPanel({ onClose }: Props) {
               onClick={() => update({ autoConnect: !s.autoConnect })}
               aria-label="Автоподключение"
             />
-          </div>
-        </div>
-
-        <div className="set-group">
-          <div className="set-label">Подписка</div>
-          <div className="set-row">
-            <div>
-              <div className="set-row-text">Активация</div>
-              <div className="set-row-sub">
-                {(() => {
-                  const a = loadActivation();
-                  return a
-                    ? `действует до ${new Date(a.validUntil * 1000).toLocaleDateString("ru-RU")}`
-                    : "не активировано";
-                })()}
-              </div>
-            </div>
-            <button
-              className="reconnect-btn"
-              style={{ marginTop: 0, width: "auto", background: "var(--panel-2)", boxShadow: "none" }}
-              onClick={() => {
-                clearActivation();
-                window.location.reload();
-              }}
-            >
-              Сбросить
-            </button>
           </div>
         </div>
 

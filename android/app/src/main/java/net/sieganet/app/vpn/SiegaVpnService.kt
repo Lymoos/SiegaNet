@@ -18,7 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.sieganet.app.MainActivity
 import net.sieganet.app.R
-import net.sieganet.app.activation.ActivationStore
+import net.sieganet.app.account.AccountStore
 import net.sieganet.app.api.MockServers
 import net.sieganet.app.api.Status
 import net.sieganet.app.api.VpnState
@@ -81,7 +81,7 @@ class SiegaVpnService : VpnService() {
 
     private fun connect(serverId: String) {
         // subscription gate, second line of defence (the UI already blocks)
-        if (!ActivationStore.isActivated(this)) {
+        if (!AccountStore.hasActiveSubscription(this)) {
             ConnectionRepository.push(Status())
             stopSelfCleanly()
             return
@@ -114,12 +114,12 @@ class SiegaVpnService : VpnService() {
         }
         tun = pfd
 
-        // config for the core: chosen server + the activation key (the
-        // backend resolves the key to peer credentials — subscription model,
-        // no per-device config files). detachFd(): the core owns the fd from
+        // config for the core: chosen server + the account token (the backend
+        // resolves the token to peer credentials — subscription model, no
+        // per-device config files). detachFd(): the core owns the fd from
         // here until stop().
         val config = JSONObject()
-            .put("activation_key", ActivationStore.load(this)?.key ?: "")
+            .put("account_token", AccountStore.load(this)?.token ?: "")
             .put("server_id", serverId)
             .put("server_host", server?.host ?: JSONObject.NULL)
             .toString()

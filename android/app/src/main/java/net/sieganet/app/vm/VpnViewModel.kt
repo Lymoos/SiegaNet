@@ -8,17 +8,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import net.sieganet.app.activation.ActivationStore
+import net.sieganet.app.account.AccountStore
 import net.sieganet.app.api.Server
 import net.sieganet.app.api.Status
 import net.sieganet.app.api.VpnState
 import net.sieganet.app.vpn.ConnectionRepository
 
 /**
- * Thin adapter between [ConnectionRepository] (shared with the service and
- * the tile) and the Compose UI, plus the activation state. Owns no VPN
- * logic — actions that touch the tunnel go through VpnService intents fired
- * by the activity.
+ * Adapter between [ConnectionRepository] (shared with service + tile),
+ * [AccountStore] and the Compose UI. Owns no VPN logic — tunnel actions go
+ * through VpnService intents fired by the activity.
  */
 class VpnViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -26,44 +25,60 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     val servers: StateFlow<List<Server>> = ConnectionRepository.servers
     val selected: StateFlow<Server?> = ConnectionRepository.selected
 
-    // ---- activation (subscription gate) -------------------------------------
+    // ---- account -------------------------------------------------------------
 
-    private val _activated = MutableStateFlow(ActivationStore.isActivated(app))
-    val activated: StateFlow<Boolean> = _activated.asStateFlow()
+    private val _account = MutableStateFlow(AccountStore.load(app))
+    val account: StateFlow<AccountStore.Account?> = _account.asStateFlow()
 
-    private val _activationBusy = MutableStateFlow(false)
-    val activationBusy: StateFlow<Boolean> = _activationBusy.asStateFlow()
+    private val _busy = MutableStateFlow(false)
+    val busy: StateFlow<Boolean> = _busy.asStateFlow()
 
-    private val _activationError = MutableStateFlow<String?>(null)
-    val activationError: StateFlow<String?> = _activationError.asStateFlow()
+    private val _authError = MutableStateFlow<String?>(null)
+    val authError: StateFlow<String?> = _authError.asStateFlow()
 
-    /** «подписка до …» for the connect screen subtitle */
-    val validUntil: Long?
-        get() = ActivationStore.load(getApplication<Application>())?.validUntilUnix
+    val loggedIn: Boolean get() = _account.value != null
+    val hasSub: Boolean get() = _account.value?.hasActiveSubscription == true
 
-    fun activate(key: String) {
-        if (_activationBusy.value) return
-        _activationBusy.value = true
-        _activationError.value = null
+    fun login(email: String, password: String) {
+        if (_busy.value) return
+        _busy.value = true
+        _authError.value = null
         viewModelScope.launch {
-            val result = ActivationStore.verify(getApplication<Application>(), key)
-            _activationBusy.value = false
-            if (result != null) {
-                _activated.value = true
-            } else {
-                _activationError.value = "Ключ не подошёл. Проверьте и попробуйте ещё раз."
-            }
+            AccountStore.login(getApplication<Application>(), email, password)
+                .onSuccess { _account.value = it }
+                .onFailure { _authError.value = it.message ?: "Не удалось войти" }
+            _busy.value = false
         }
+    }
+
+    /** @param onDone true if the code activated the subscription */
+    fun redeem(code: String, onDone: (Boolean) -> Unit = {}) {
+        if (_busy.value) return
+        _busy.value = true
+        _authError.value = null
+        viewModelScope.launch {
+            AccountStore.redeem(getApplication<Application>(), code)
+                .onSuccess { _account.value = it; onDone(true) }
+                .onFailure { _authError.value = it.message ?: "Код не подошёл"; onDone(false) }
+            _busy.value = false
+        }
+    }
+
+    fun clearAuthError() {
+        _authError.value = null
+    }
+
+    fun logout() {
+        AccountStore.logout(getApplication<Application>())
+        _account.value = null
     }
 
     // ---- servers -------------------------------------------------------------
 
     init {
-        // ping jitter / load drift while the app is open
         viewModelScope.launch {
             while (true) {
                 delay(8000)
-                // don't reshuffle mid-connection state transitions
                 if (status.value.state != VpnState.CONNECTING) {
                     ConnectionRepository.refreshServers()
                 }

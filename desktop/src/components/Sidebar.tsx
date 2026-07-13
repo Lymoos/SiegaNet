@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import type { Server, Status } from "../api/types";
 import type { LastConnection } from "../state/settings";
-import { flagFor } from "../lib/flags";
+import { loadColor } from "../lib/flags";
 import { formatAgo } from "../lib/format";
+import { CountryBadge } from "./CountryBadge";
 
 function pingClass(ms: number): string {
   if (ms < 80) return "ping-good";
@@ -63,7 +64,7 @@ export function Sidebar({ servers, status, selectedId, last, onSelect, onConnect
         {lastServer ? (
           <>
             <div className="last-server">
-              <span className="last-flag">{flagFor(lastServer.country)}</span>
+              <CountryBadge country={lastServer.country} size={38} ring={loadColor(lastServer.load_pct)} />
               <div>
                 <div className="last-country">{lastServer.country}</div>
                 <div className="last-meta">
@@ -111,7 +112,7 @@ export function Sidebar({ servers, status, selectedId, last, onSelect, onConnect
               onDoubleClick={() => onConnect(s.id)}
               title="Клик — показать на карте, двойной клик — подключиться"
             >
-              <span className="server-flag">{flagFor(s.country)}</span>
+              <CountryBadge country={s.country} size={28} ring={loadColor(s.load_pct)} />
               <span className="server-name">
                 <span className="server-country">{s.country}</span>
                 <span className="server-city">{s.city}</span>

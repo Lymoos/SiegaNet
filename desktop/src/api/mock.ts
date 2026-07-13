@@ -1,4 +1,4 @@
-import type { ActivationResult, ControlApi, Ok, Server, Status, VpnState } from "./types";
+import type { ControlApi, Ok, Server, Status, VpnState } from "./types";
 
 /**
  * Fully self-contained mock of the core control API.
@@ -112,17 +112,6 @@ export class MockControlApi implements ControlApi {
     }, handshakeMs);
 
     return { ok: true };
-  }
-
-  async activate(key: string): Promise<ActivationResult> {
-    // mock: any non-empty key is a valid 30-day subscription; the real
-    // check is done by the backend later, same request/response shape
-    await new Promise((r) => setTimeout(r, 600 + Math.random() * 500));
-    if (key.trim().length === 0) return { ok: false, valid_until: 0 };
-    return {
-      ok: true,
-      valid_until: Math.floor(Date.now() / 1000) + 30 * 24 * 3600,
-    };
   }
 
   async disconnect(): Promise<Ok> {

@@ -8,5 +8,4 @@
     <string name="action_disconnect">Отключить</string>
     <string name="action_cancel">Отмена</string>
     <string name="notif_channel_vpn">Состояние VPN</string>
-    <string name="state_needs_activation">Требуется активация</string>
 </resources>

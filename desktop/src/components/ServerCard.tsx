@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { Server, Status } from "../api/types";
-import { flagFor } from "../lib/flags";
+import { loadColor } from "../lib/flags";
+import { CountryBadge } from "./CountryBadge";
 
 const CARD_W = 260;
 const CARD_H = 240;
@@ -49,7 +50,7 @@ export function ServerCard({
       </button>
 
       <div className="card-head">
-        <span className="card-flag">{flagFor(server.country)}</span>
+        <CountryBadge country={server.country} size={44} ring={loadColor(server.load_pct)} />
         <div>
           <div className="card-country">{server.country}</div>
           <div className="card-city">{server.city}</div>

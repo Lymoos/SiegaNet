@@ -1,4 +1,5 @@
 import type { Server, Status } from "../api/types";
+import type { Account } from "../account/types";
 import { formatBytes, formatSince } from "../lib/format";
 
 const STATE_LABEL: Record<Status["state"], string> = {
@@ -13,9 +14,12 @@ interface Props {
   target: Server | null;
   upRate: number;
   downRate: number;
+  account: Account | null;
+  hasSub: boolean;
   onConnect: (serverId: string) => void;
   onDisconnect: () => void;
   onOpenSettings: () => void;
+  onOpenProfile: () => void;
 }
 
 export function StatusBar({
@@ -24,9 +28,12 @@ export function StatusBar({
   target,
   upRate,
   downRate,
+  account,
+  hasSub,
   onConnect,
   onDisconnect,
   onOpenSettings,
+  onOpenProfile,
 }: Props) {
   const { state } = status;
 
@@ -51,6 +58,8 @@ export function StatusBar({
       : state === "connecting"
         ? "Отмена"
         : "Подключиться";
+
+  const initial = account?.email.charAt(0).toUpperCase() ?? "?";
 
   return (
     <header className="statusbar">
@@ -83,10 +92,17 @@ export function StatusBar({
       </div>
 
       <button
-        className={`connect-btn ${state === "connected" ? "on" : ""} ${state === "connecting" ? "busy" : ""}`}
+        className={`connect-btn ${state === "connected" ? "on" : ""} ${state === "connecting" ? "busy" : ""} ${!hasSub && state === "disconnected" ? "locked" : ""}`}
         onClick={mainAction}
         disabled={state === "disconnected" && !target}
+        title={!hasSub && state === "disconnected" ? "Нужна активная подписка" : undefined}
       >
+        {!hasSub && state === "disconnected" && (
+          <svg className="lock-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <rect x="4" y="11" width="16" height="9" rx="2" />
+            <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+          </svg>
+        )}
         {mainLabel}
       </button>
 
@@ -95,6 +111,15 @@ export function StatusBar({
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.12-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.12 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01A1.7 1.7 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01A1.7 1.7 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z" />
         </svg>
+      </button>
+
+      <button
+        className={`profile-chip ${hasSub ? "pro" : ""}`}
+        title={account?.email}
+        onClick={onOpenProfile}
+      >
+        <span className="profile-chip-avatar">{initial}</span>
+        {hasSub && <span className="profile-chip-badge">PRO</span>}
       </button>
     </header>
   );

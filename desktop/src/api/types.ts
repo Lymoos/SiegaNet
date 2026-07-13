@@ -10,12 +10,11 @@
  *   GET  /servers     -> Server[]
  *   POST /connect     { server_id } -> { ok }
  *   POST /disconnect               -> { ok }
- *   POST /activate    { key } -> { ok, valid_until }
  *
- * Activation model (subscription VPN): without a valid activation key the
- * client refuses to connect. The key is checked via POST /activate (mocked
- * for now — real check goes to the backend later) and the result is cached
- * locally so the key is not asked for on every launch.
+ * Auth and subscription are NOT part of this contract — they live on the
+ * backend account service (see account/types.ts). Connecting is gated in the
+ * UI by the account's subscription; the tunnel core itself only knows how to
+ * connect/disconnect.
  */
 
 export type VpnState = "disconnected" | "connecting" | "connected";
@@ -45,16 +44,9 @@ export interface Ok {
   ok: boolean;
 }
 
-export interface ActivationResult {
-  ok: boolean;
-  /** unix seconds until which the subscription is valid; 0 when !ok */
-  valid_until: number;
-}
-
 export interface ControlApi {
   getStatus(): Promise<Status>;
   getServers(): Promise<Server[]>;
   connect(serverId: string): Promise<Ok>;
   disconnect(): Promise<Ok>;
-  activate(key: string): Promise<ActivationResult>;
 }

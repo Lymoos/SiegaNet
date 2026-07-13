@@ -65,8 +65,8 @@ class SiegaTileService : TileService() {
             return
         }
 
-        // no valid subscription or no VPN consent yet — both need the app
-        if (!net.sieganet.app.activation.ActivationStore.isActivated(this) ||
+        // not logged in / no subscription / no VPN consent — all need the app
+        if (!net.sieganet.app.account.AccountStore.hasActiveSubscription(this) ||
             VpnService.prepare(this) != null
         ) {
             // consent missing — must go through the activity

@@ -13,9 +13,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import net.sieganet.app.ui.ActivationScreen
 import net.sieganet.app.ui.ConnectScreen
+import net.sieganet.app.ui.LoginScreen
+import net.sieganet.app.ui.ProfileSheet
 import net.sieganet.app.ui.ServerSheet
+import net.sieganet.app.ui.SubscriptionDialog
 import net.sieganet.app.ui.theme.SiegaNetTheme
 import net.sieganet.app.vm.VpnViewModel
 import net.sieganet.app.vpn.SiegaVpnService
@@ -33,9 +35,7 @@ class MainActivity : ComponentActivity() {
     private val vpnConsent = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        if (result.resultCode == RESULT_OK) {
-            pendingServerId?.let(::startTunnel)
-        }
+        if (result.resultCode == RESULT_OK) pendingServerId?.let(::startTunnel)
         pendingServerId = null
     }
 
@@ -52,46 +52,69 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SiegaNetTheme {
-                val activated by vm.activated.collectAsState()
+                val account by vm.account.collectAsState()
+                val busy by vm.busy.collectAsState()
+                val authError by vm.authError.collectAsState()
 
-                if (!activated) {
-                    // subscription gate: no valid key — no VPN
-                    val busy by vm.activationBusy.collectAsState()
-                    val error by vm.activationError.collectAsState()
-                    ActivationScreen(
-                        busy = busy,
-                        error = error,
-                        onActivate = vm::activate,
-                    )
+                if (account == null) {
+                    LoginScreen(busy = busy, error = authError, onLogin = vm::login)
                     return@SiegaNetTheme
                 }
 
+                val acc = account!!
+                val hasSub = acc.hasActiveSubscription
                 val status by vm.status.collectAsState()
                 val servers by vm.servers.collectAsState()
                 val selected by vm.selected.collectAsState()
+
                 var sheetOpen by remember { mutableStateOf(false) }
+                var profileOpen by remember { mutableStateOf(false) }
+                var subDialog by remember { mutableStateOf(false) }
 
                 ConnectScreen(
                     status = status,
                     selected = selected,
-                    subscriptionNote = vm.validUntil?.let {
+                    subscriptionNote = if (hasSub) {
                         "подписка до " + SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
-                            .format(Date(it * 1000))
+                            .format(Date(acc.validUntilUnix * 1000))
+                    } else {
+                        "Подписка не активна"
                     },
-                    onConnectClick = { selected?.let { connect(it.id) } },
+                    hasSub = hasSub,
+                    accountInitial = acc.email.take(1).uppercase(),
+                    onConnectClick = {
+                        if (hasSub) selected?.let { connect(it.id) } else subDialog = true
+                    },
                     onDisconnectClick = ::disconnect,
                     onServerClick = { sheetOpen = true },
+                    onProfileClick = { vm.clearAuthError(); profileOpen = true },
                 )
 
                 if (sheetOpen) {
                     ServerSheet(
                         servers = servers,
                         selectedId = selected?.id,
-                        onPick = {
-                            vm.select(it)
-                            sheetOpen = false
-                        },
+                        onPick = { vm.select(it); sheetOpen = false },
                         onDismiss = { sheetOpen = false },
+                    )
+                }
+
+                if (profileOpen) {
+                    ProfileSheet(
+                        account = acc,
+                        busy = busy,
+                        error = authError,
+                        onRedeem = { code -> vm.redeem(code) },
+                        onLogout = { profileOpen = false; vm.logout() },
+                        onDismiss = { profileOpen = false },
+                    )
+                }
+
+                if (subDialog) {
+                    SubscriptionDialog(
+                        onRenew = { subDialog = false; vm.clearAuthError(); profileOpen = true },
+                        onUseCode = { subDialog = false; vm.clearAuthError(); profileOpen = true },
+                        onDismiss = { subDialog = false },
                     )
                 }
             }
@@ -111,16 +134,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startTunnel(serverId: String) {
-        ContextCompat.startForegroundService(
-            this,
-            SiegaVpnService.connectIntent(this, serverId),
-        )
+        ContextCompat.startForegroundService(this, SiegaVpnService.connectIntent(this, serverId))
     }
 
     private fun disconnect() {
-        ContextCompat.startForegroundService(
-            this,
-            SiegaVpnService.disconnectIntent(this),
-        )
+        ContextCompat.startForegroundService(this, SiegaVpnService.disconnectIntent(this))
     }
 }

@@ -8,7 +8,10 @@ import org.json.JSONObject
  *
  *   GET  /status   -> { state, server_id, inner_ip, since_unix, up_bytes, down_bytes }
  *   GET  /servers  -> [ { id, country, city, host, ping_ms, load_pct } ]
- *   POST /activate { key } -> { ok, valid_until }   (see activation/ActivationStore)
+ *
+ * Auth and subscription are NOT part of this contract — they live on the
+ * backend account service (see account/AccountStore). Connecting is gated in
+ * the UI by the account's subscription.
  *
  * On Android the transport differs — the core is linked in as a gomobile
  * module instead of a localhost HTTP server — but the shapes are identical:
@@ -67,17 +70,12 @@ data class Server(
     val loadPct: Int,
 )
 
-/** country name -> flag emoji (same UI-side helper as on desktop) */
-fun flagFor(country: String): String {
-    val iso = when (country) {
-        "Нидерланды" -> "NL"; "Германия" -> "DE"; "Финляндия" -> "FI"
-        "Швеция" -> "SE"; "Великобритания" -> "GB"; "Франция" -> "FR"
-        "Польша" -> "PL"; "Турция" -> "TR"; "Казахстан" -> "KZ"
-        "ОАЭ" -> "AE"; "Сингапур" -> "SG"; "Япония" -> "JP"
-        "США" -> "US"; "Бразилия" -> "BR"
-        else -> return "🌐"
-    }
-    val base = 0x1F1E6
-    return String(Character.toChars(base + iso[0].code - 'A'.code)) +
-        String(Character.toChars(base + iso[1].code - 'A'.code))
+/** country name -> two-letter ISO code (drives the CountryBadge; "??" unknown) */
+fun isoFor(country: String): String = when (country) {
+    "Нидерланды" -> "NL"; "Германия" -> "DE"; "Финляндия" -> "FI"
+    "Швеция" -> "SE"; "Великобритания" -> "GB"; "Франция" -> "FR"
+    "Польша" -> "PL"; "Турция" -> "TR"; "Казахстан" -> "KZ"
+    "ОАЭ" -> "AE"; "Сингапур" -> "SG"; "Япония" -> "JP"
+    "США" -> "US"; "Бразилия" -> "BR"
+    else -> "??"
 }

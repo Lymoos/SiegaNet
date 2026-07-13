@@ -1,7 +1,6 @@
 package net.sieganet.app.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +27,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import net.sieganet.app.api.Server
-import net.sieganet.app.api.flagFor
 import net.sieganet.app.ui.theme.AccentLight
 import net.sieganet.app.ui.theme.Inter
 import net.sieganet.app.ui.theme.Mono
@@ -37,12 +35,12 @@ import net.sieganet.app.ui.theme.Panel
 import net.sieganet.app.ui.theme.TextMain
 import net.sieganet.app.ui.theme.TextMuted
 
-private data class SheetRow(val server: Server, val flag: String, val ring: Color)
+private data class SheetRow(val server: Server, val ring: Color)
 
 /**
  * Bottom sheet with the server list: страна, город, пинг — one tap selects.
- * The ring around each flag encodes server load with the same green→orange→
- * red ramp as the desktop map pins (see [loadColor]).
+ * The ring around each country badge encodes server load with the same
+ * green→orange→red ramp as the desktop map pins (see [loadColor]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,11 +54,10 @@ fun ServerSheet(
     // a single settle animation, noticeably faster on slow emulators
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // sort once per server-list change, not on every recomposition; flags and
-    // ring colours are precomputed so rows do zero work while scrolling
+    // sort once per server-list change, not on every recomposition; ring
+    // colours are precomputed so rows do zero work while scrolling
     val rows = remember(servers) {
-        servers.sortedBy { it.pingMs }
-            .map { SheetRow(it, flagFor(it.country), loadColor(it.loadPct)) }
+        servers.sortedBy { it.pingMs }.map { SheetRow(it, loadColor(it.loadPct)) }
     }
 
     ModalBottomSheet(
@@ -85,7 +82,7 @@ fun ServerSheet(
             LoadLegend()
         }
         LazyColumn(modifier = Modifier.padding(bottom = 24.dp)) {
-            items(rows, key = { it.server.id }) { (s, flag, ring) ->
+            items(rows, key = { it.server.id }) { (s, ring) ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -93,15 +90,8 @@ fun ServerSheet(
                         .padding(horizontal = 24.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // flag in a ring: ring colour = load (as on the desktop map)
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .border(2.dp, ring, CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(flag, fontSize = 20.sp)
-                    }
+                    // country badge in a ring: ring colour = load (as on the map)
+                    CountryBadge(s.country, size = 42.dp, ring = ring)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(

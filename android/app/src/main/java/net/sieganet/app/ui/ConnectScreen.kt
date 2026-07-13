@@ -50,7 +50,6 @@ import net.sieganet.app.R
 import net.sieganet.app.api.Server
 import net.sieganet.app.api.Status
 import net.sieganet.app.api.VpnState
-import net.sieganet.app.api.flagFor
 import net.sieganet.app.ui.theme.Accent
 import net.sieganet.app.ui.theme.AccentDeep
 import net.sieganet.app.ui.theme.AccentLight
@@ -72,11 +71,14 @@ import net.sieganet.app.ui.theme.TextMuted
 fun ConnectScreen(
     status: Status,
     selected: Server?,
-    /** «подписка до …» line under the state label */
+    /** «подписка до …» / «Без подписки» line under the state label */
     subscriptionNote: String?,
+    hasSub: Boolean,
+    accountInitial: String,
     onConnectClick: () -> Unit,
     onDisconnectClick: () -> Unit,
     onServerClick: () -> Unit,
+    onProfileClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -97,6 +99,8 @@ fun ConnectScreen(
                 fontSize = 20.sp,
                 color = TextMain,
             )
+            Spacer(Modifier.weight(1f))
+            ProfileButton(initial = accountInitial, pro = hasSub, onClick = onProfileClick)
         }
 
         Spacer(Modifier.height(28.dp))
@@ -128,6 +132,7 @@ fun ConnectScreen(
         // ---- the one loud element -------------------------------------------
         PowerButton(
             state = status.state,
+            locked = !hasSub && status.state == VpnState.DISCONNECTED,
             onClick = {
                 if (status.state == VpnState.DISCONNECTED) onConnectClick()
                 else onDisconnectClick()
@@ -183,7 +188,11 @@ fun ConnectScreen(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(selected?.let { flagFor(it.country) } ?: "🌐", fontSize = 24.sp)
+            if (selected != null) {
+                CountryBadge(selected.country, size = 38.dp, ring = loadColor(selected.loadPct))
+            } else {
+                CountryBadge("", size = 38.dp)
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -220,7 +229,7 @@ private val ARC_GAP = 7.dp
 private val ARC_STROKE = 3.dp
 
 @Composable
-private fun PowerButton(state: VpnState, onClick: () -> Unit) {
+private fun PowerButton(state: VpnState, locked: Boolean, onClick: () -> Unit) {
     val anim = rememberInfiniteTransition(label = "power")
 
     // connecting: a thin violet arc wraps around the ring — the head circles
@@ -318,10 +327,10 @@ private fun PowerButton(state: VpnState, onClick: () -> Unit) {
             verticalArrangement = Arrangement.Center,
         ) {
             Icon(
-                painterResource(R.drawable.ic_tile),
+                painterResource(if (locked) R.drawable.ic_lock else R.drawable.ic_tile),
                 contentDescription = null,
                 tint = if (state == VpnState.CONNECTED) Ok else AccentLight,
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(if (locked) 34.dp else 44.dp),
             )
             Spacer(Modifier.height(10.dp))
             Text(
@@ -336,5 +345,29 @@ private fun PowerButton(state: VpnState, onClick: () -> Unit) {
                 color = TextMain,
             )
         }
+    }
+}
+
+/** avatar chip in the top bar; a green PRO ring when subscribed */
+@Composable
+private fun ProfileButton(initial: String, pro: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .then(
+                if (pro) Modifier.border(2.dp, Ok, CircleShape) else Modifier,
+            )
+            .padding(if (pro) 3.dp else 0.dp)
+            .background(Brush.linearGradient(listOf(Accent, AccentDeep)), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            initial,
+            fontFamily = Inter,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            color = Color.White,
+        )
     }
 }
