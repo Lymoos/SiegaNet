@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,7 +59,20 @@ fun CountryBadge(
                 painter = painterResource(res),
                 contentDescription = country,
                 contentScale = ContentScale.Crop,
+                // toned so bright flags don't pop out of the dark theme
+                colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0.82f) }),
                 modifier = Modifier.size(size).clip(CircleShape),
+            )
+            // darken + vignette overlay: seats the flag into the dark UI
+            Box(
+                modifier = Modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(0x1F000000), Color(0x5C000000)),
+                        ),
+                    ),
             )
         } else {
             Box(

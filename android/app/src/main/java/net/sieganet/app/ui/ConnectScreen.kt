@@ -253,6 +253,16 @@ private fun PowerButton(state: VpnState, locked: Boolean, onClick: () -> Unit) {
         ),
         label = "arcSweep",
     )
+    // slow breathing for the connected glow (calm, mirrors the arc's motion)
+    val breathe by anim.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "breathe",
+    )
 
     val glowColor = when (state) {
         VpnState.CONNECTED -> Ok
@@ -267,7 +277,7 @@ private fun PowerButton(state: VpnState, locked: Boolean, onClick: () -> Unit) {
     }
     val glowScale = when (state) {
         VpnState.CONNECTING -> 0.95f
-        VpnState.CONNECTED -> 1.0f
+        VpnState.CONNECTED -> breathe
         VpnState.DISCONNECTED -> 0.9f
     }
 

@@ -100,7 +100,8 @@ export function WorldMap({
                   ? "connecting"
                   : "";
             const isSelected = selectedId === s.id;
-            const r = isSelected ? 8.5 : 7;
+            const r = 8; // flag radius when expanded
+            const load = loadColor(s.load_pct);
             const url = flagUrlFor(s.country);
             const clipId = `pin-clip-${s.id}`;
             return (
@@ -110,36 +111,37 @@ export function WorldMap({
                 className={`marker ${markerState} ${isSelected ? "is-selected" : ""}`}
                 onClick={(e: React.MouseEvent) => markerClick(s.id, e)}
               >
+                {/* generous transparent hit area for hover/click */}
+                <circle className="pin-hit" r={10} />
                 {/* pulse ring for connected/connecting */}
-                <circle className="marker-halo" r={8} />
-                {/* selection glow behind the pin */}
-                {isSelected && <circle className="pin-glow" r={11.5} />}
-                {/* pin: real flag cropped to a centred circle + load ring */}
-                {url ? (
-                  <>
-                    <defs>
-                      <clipPath id={clipId}>
-                        <circle r={r} />
-                      </clipPath>
-                    </defs>
-                    <image
-                      href={url}
-                      x={-r}
-                      y={-r}
-                      width={2 * r}
-                      height={2 * r}
-                      preserveAspectRatio="xMidYMid slice"
-                      clipPath={`url(#${clipId})`}
-                    />
-                  </>
-                ) : (
-                  <circle className="pin-body" r={r} />
-                )}
-                <circle
-                  className="pin-ring"
-                  r={r}
-                  style={{ stroke: loadColor(s.load_pct) }}
-                />
+                <circle className="marker-halo" r={9} />
+                {/* resting state: a small dot in the load colour */}
+                <circle className="pin-dot" r={3.4} style={{ fill: load }} />
+                {/* hover/active state: flag grows in, animated */}
+                <g className="pin-flag">
+                  {isSelected && <circle className="pin-glow" r={12} />}
+                  {url ? (
+                    <>
+                      <defs>
+                        <clipPath id={clipId}>
+                          <circle r={r} />
+                        </clipPath>
+                      </defs>
+                      <image
+                        href={url}
+                        x={-r}
+                        y={-r}
+                        width={2 * r}
+                        height={2 * r}
+                        preserveAspectRatio="xMidYMid slice"
+                        clipPath={`url(#${clipId})`}
+                      />
+                    </>
+                  ) : (
+                    <circle className="pin-body" r={r} />
+                  )}
+                  <circle className="pin-ring" r={r} style={{ stroke: load }} />
+                </g>
                 <title>{`${s.country}, ${s.city} — ${s.ping_ms} ms · нагрузка ${s.load_pct}%`}</title>
               </Marker>
             );

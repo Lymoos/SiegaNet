@@ -91,6 +91,19 @@ input:focus {
   background:
     radial-gradient(1100px 500px at 75% -10%, rgba(91, 33, 182, 0.18), transparent 65%),
     var(--bg);
+  animation: app-in 0.35s ease-out;
+}
+
+@keyframes app-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 .main {
@@ -277,18 +290,19 @@ input:focus {
 
 .server-row {
   display: grid;
-  grid-template-columns: 26px 1fr auto;
+  grid-template-columns: 28px 1fr auto;
   align-items: center;
   gap: 10px;
   text-align: left;
   padding: 8px 10px;
   border-radius: var(--r-card);
   border: 1px solid transparent;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.14s, border-color 0.14s, transform 0.14s ease;
 }
 
 .server-row:hover {
   background: rgba(139, 92, 246, 0.08);
+  transform: translateX(3px);
 }
 
 .server-row.selected {
@@ -510,7 +524,35 @@ input:focus {
 
 .pin-body {
   fill: #201a2e;
-  transition: r 0.15s;
+}
+
+/* transparent hit target so the tiny dot is easy to hover/click */
+.pin-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+/* resting state: small load-coloured dot */
+.pin-dot {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  transform-box: fill-box;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+/* hover/active state: the flag pin, grows in from the dot */
+.pin-flag {
+  opacity: 0;
+  transform: scale(0.35);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.22s ease, transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
+}
+
+/* flags on the map are toned to sit in the dark theme */
+.pin-flag image {
+  filter: saturate(0.85) brightness(0.82);
 }
 
 /* load-coloured outline hugging the flag circle */
@@ -520,12 +562,25 @@ input:focus {
   pointer-events: none;
 }
 
-.marker image {
-  transition: opacity 0.15s;
+/* swap dot -> flag on hover, or when the server is selected/active */
+.marker:hover .pin-dot,
+.marker.is-selected .pin-dot,
+.marker.connected .pin-dot,
+.marker.connecting .pin-dot {
+  opacity: 0;
+  transform: scale(0.4);
 }
 
-.marker:hover image {
-  opacity: 0.88;
+.marker:hover .pin-flag,
+.marker.is-selected .pin-flag,
+.marker.connected .pin-flag,
+.marker.connecting .pin-flag {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.marker:hover .pin-flag image {
+  filter: saturate(0.98) brightness(0.95);
 }
 
 .pin-glow {
@@ -909,6 +964,28 @@ input:focus {
   object-position: center;
   display: block;
   user-select: none;
+  /* toned down so bright flags don't pop out of the dark theme */
+  filter: saturate(0.82) brightness(0.8);
+  transition: filter 0.2s ease;
+}
+
+/* inner vignette seats the flag into the dark UI */
+.flag-badge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 5px 1px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+/* flag comes alive when its row/card is hovered */
+.server-row:hover .flag-badge img,
+.last-card:hover .flag-badge img,
+.card-head .flag-badge img {
+  filter: saturate(1) brightness(0.98);
 }
 
 /* ---------- auth (login) ---------- */
