@@ -9,7 +9,8 @@ import {
 import worldTopo from "world-atlas/countries-110m.json";
 import type { Server, Status } from "../api/types";
 import { coordsFor } from "../geo/serverGeo";
-import { isoFor, loadColor } from "../lib/flags";
+import { loadColor } from "../lib/flags";
+import { flagUrlFor } from "../lib/flagAssets";
 import { ServerCard } from "./ServerCard";
 
 interface Props {
@@ -99,6 +100,9 @@ export function WorldMap({
                   ? "connecting"
                   : "";
             const isSelected = selectedId === s.id;
+            const r = isSelected ? 8.5 : 7;
+            const url = flagUrlFor(s.country);
+            const clipId = `pin-clip-${s.id}`;
             return (
               <Marker
                 key={s.id}
@@ -110,15 +114,32 @@ export function WorldMap({
                 <circle className="marker-halo" r={8} />
                 {/* selection glow behind the pin */}
                 {isSelected && <circle className="pin-glow" r={11.5} />}
-                {/* pin: dark disc, ring colour = load */}
+                {/* pin: real flag cropped to a centred circle + load ring */}
+                {url ? (
+                  <>
+                    <defs>
+                      <clipPath id={clipId}>
+                        <circle r={r} />
+                      </clipPath>
+                    </defs>
+                    <image
+                      href={url}
+                      x={-r}
+                      y={-r}
+                      width={2 * r}
+                      height={2 * r}
+                      preserveAspectRatio="xMidYMid slice"
+                      clipPath={`url(#${clipId})`}
+                    />
+                  </>
+                ) : (
+                  <circle className="pin-body" r={r} />
+                )}
                 <circle
-                  className="pin-body"
-                  r={isSelected ? 8.5 : 7}
+                  className="pin-ring"
+                  r={r}
                   style={{ stroke: loadColor(s.load_pct) }}
                 />
-                <text className="pin-label" dy="2.1">
-                  {isoFor(s.country)}
-                </text>
                 <title>{`${s.country}, ${s.city} — ${s.ping_ms} ms · нагрузка ${s.load_pct}%`}</title>
               </Marker>
             );

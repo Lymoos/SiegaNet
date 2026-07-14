@@ -510,23 +510,22 @@ input:focus {
 
 .pin-body {
   fill: #201a2e;
-  stroke-width: 1.8; /* stroke colour set inline from load_pct */
   transition: r 0.15s;
 }
 
-.marker:hover .pin-body {
-  fill: #2a2240;
+/* load-coloured outline hugging the flag circle */
+.pin-ring {
+  fill: none;
+  stroke-width: 1.8; /* stroke colour set inline from load_pct */
+  pointer-events: none;
 }
 
-.pin-label {
-  fill: var(--text);
-  font-family: var(--font-mono);
-  font-size: 5.6px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-anchor: middle;
-  pointer-events: none;
-  user-select: none;
+.marker image {
+  transition: opacity 0.15s;
+}
+
+.marker:hover image {
+  opacity: 0.88;
 }
 
 .pin-glow {
@@ -887,14 +886,29 @@ input:focus {
   display: inline-grid;
   place-items: center;
   border-radius: 50%;
-  border-style: solid;
-  border-color: var(--line-strong);
   background: radial-gradient(circle at 32% 28%, #2a2140, #17121f);
   color: var(--text);
   font-family: var(--font-mono);
   font-weight: 500;
   letter-spacing: 0.02em;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* real flag cropped into a centred circle; ring hugs it via box-shadow */
+.flag-badge {
+  flex-shrink: 0;
+  display: inline-block;
+  border-radius: 50%;
+  overflow: hidden;
+  position: relative;
+}
+
+.flag-badge img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  user-select: none;
 }
 
 /* ---------- auth (login) ---------- */
